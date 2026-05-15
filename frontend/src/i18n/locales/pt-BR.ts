@@ -819,6 +819,7 @@ export default {
       deleteArchive: 'Excluir Arquivo',
       deleteConfirm: 'Tem certeza de que deseja excluir "{{name}}"? Esta ação não pode ser desfeita.',
       deleteButton: 'Excluir',
+      deletePurgeStats: 'Also remove this print from Quick Stats (filament, time, cost, energy)',
       removeSource3mf: 'Remover Source 3MF',
       removeSource3mfConfirm: 'Tem certeza de que deseja remover o arquivo source 3MF de "{{name}}"? Isso excluirá o arquivo original do projeto do fatiador.',
       removeButton: 'Remover',

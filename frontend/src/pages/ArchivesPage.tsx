@@ -181,6 +181,9 @@ function ArchiveCard({
   const [showReprint, setShowReprint] = useState(false);
   const [showSliceModal, setShowSliceModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // #1343: when true, the delete also drops the row from Quick Stats. Default
+  // off — soft delete preserves the archive's filament/time/cost contribution.
+  const [deletePurgeStats, setDeletePurgeStats] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showTimelapse, setShowTimelapse] = useState(false);
   const [showTimelapseSelect, setShowTimelapseSelect] = useState(false);
@@ -340,7 +343,7 @@ function ArchiveCard({
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => api.deleteArchive(archive.id),
+    mutationFn: (purgeStats: boolean) => api.deleteArchive(archive.id, purgeStats),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['archives'] });
       showToast(t('archives.toast.archiveDeleted'));
@@ -1252,11 +1255,27 @@ function ArchiveCard({
           confirmText={t('archives.modal.deleteButton')}
           variant="danger"
           onConfirm={() => {
-            deleteMutation.mutate();
+            deleteMutation.mutate(deletePurgeStats);
             setShowDeleteConfirm(false);
+            setDeletePurgeStats(false);
           }}
-          onCancel={() => setShowDeleteConfirm(false)}
-        />
+          onCancel={() => {
+            setShowDeleteConfirm(false);
+            setDeletePurgeStats(false);
+          }}
+        >
+          {/* #1343: opt-in checkbox — by default the archive is soft-deleted,
+              so its filament / time / cost contribution stays in Quick Stats. */}
+          <label className="flex items-start gap-2 cursor-pointer text-sm text-bambu-gray">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-red-500"
+              checked={deletePurgeStats}
+              onChange={(e) => setDeletePurgeStats(e.target.checked)}
+            />
+            <span>{t('archives.modal.deletePurgeStats')}</span>
+          </label>
+        </ConfirmModal>
       )}
 
       {/* Delete Source 3MF Confirmation */}
@@ -1507,6 +1526,9 @@ function ArchiveListRow({
   const { hasPermission, canModify } = useAuth();
   const [showEdit, setShowEdit] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // #1343: opt-in "Also remove from statistics" checkbox state. Default off
+  // — soft delete keeps the archive's contribution to Quick Stats.
+  const [deletePurgeStats, setDeletePurgeStats] = useState(false);
   const navigate = useNavigate();
   const [showReprint, setShowReprint] = useState(false);
   const [showSliceModal, setShowSliceModal] = useState(false);
@@ -1645,7 +1667,7 @@ function ArchiveListRow({
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => api.deleteArchive(archive.id),
+    mutationFn: (purgeStats: boolean) => api.deleteArchive(archive.id, purgeStats),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['archives'] });
       showToast(t('archives.toast.archiveDeleted'));
@@ -2204,11 +2226,27 @@ function ArchiveListRow({
           confirmText={t('archives.modal.deleteButton')}
           variant="danger"
           onConfirm={() => {
-            deleteMutation.mutate();
+            deleteMutation.mutate(deletePurgeStats);
             setShowDeleteConfirm(false);
+            setDeletePurgeStats(false);
           }}
-          onCancel={() => setShowDeleteConfirm(false)}
-        />
+          onCancel={() => {
+            setShowDeleteConfirm(false);
+            setDeletePurgeStats(false);
+          }}
+        >
+          {/* #1343: opt-in checkbox — by default the archive is soft-deleted,
+              so its filament / time / cost contribution stays in Quick Stats. */}
+          <label className="flex items-start gap-2 cursor-pointer text-sm text-bambu-gray">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-red-500"
+              checked={deletePurgeStats}
+              onChange={(e) => setDeletePurgeStats(e.target.checked)}
+            />
+            <span>{t('archives.modal.deletePurgeStats')}</span>
+          </label>
+        </ConfirmModal>
       )}
 
       {/* Delete Source 3MF Confirmation */}

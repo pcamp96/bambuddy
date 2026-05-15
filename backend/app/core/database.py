@@ -1916,6 +1916,19 @@ async def run_migrations(conn):
     # rendered on archive cards.
     await _safe_execute(conn, "ALTER TABLE print_archives ADD COLUMN bed_type VARCHAR(64)")
 
+    # Migration: Add deleted_at to print_archives (#1343)
+    # Soft-delete sentinel so deleting an archive entry from the UI no longer
+    # wipes its filament / time / cost contribution from Quick Stats. Listings
+    # hide rows where deleted_at IS NOT NULL; the stats endpoint counts them all.
+    # DATETIME on SQLite, TIMESTAMP on PostgreSQL (PG doesn't accept DATETIME on
+    # ALTER TABLE the same way it tolerates it inside CREATE TABLE).
+    _deleted_at_type = "DATETIME" if is_sqlite() else "TIMESTAMP"
+    await _safe_execute(conn, f"ALTER TABLE print_archives ADD COLUMN deleted_at {_deleted_at_type}")
+    await _safe_execute(
+        conn,
+        "CREATE INDEX IF NOT EXISTS ix_print_archives_deleted_at ON print_archives (deleted_at)",
+    )
+
     # Migration: Create smart_plug_energy_snapshots table (#941)
     # Hourly snapshots of each plug's lifetime counter, so date-range queries in
     # "total consumption" energy mode can compute (last - first) deltas.

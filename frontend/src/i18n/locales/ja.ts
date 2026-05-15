@@ -818,6 +818,7 @@ export default {
       deleteArchive: 'アーカイブを削除',
       deleteConfirm: '"{{name}}" を削除しますか？この操作は取り消せません。',
       deleteButton: '削除',
+      deletePurgeStats: 'Also remove this print from Quick Stats (filament, time, cost, energy)',
       removeSource3mf: 'ソース3MFを削除',
       removeSource3mfConfirm: '"{{name}}"からソース3MFファイルを削除してもよろしいですか？元のスライサープロジェクトファイルが削除されます。',
       removeButton: '削除',

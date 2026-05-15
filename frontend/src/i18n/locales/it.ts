@@ -819,6 +819,7 @@ export default {
       deleteArchive: 'Elimina Archivio',
       deleteConfirm: 'Sei sicuro di eliminare "{{name}}"? Questa azione non può essere annullata.',
       deleteButton: 'Elimina',
+      deletePurgeStats: 'Also remove this print from Quick Stats (filament, time, cost, energy)',
       removeSource3mf: 'Rimuovi Sorgente 3MF',
       removeSource3mfConfirm: 'Sei sicuro di rimuovere il file sorgente 3MF da "{{name}}"? Questo eliminerà il progetto slicer originale.',
       removeButton: 'Rimuovi',

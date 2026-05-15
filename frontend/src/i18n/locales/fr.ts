@@ -819,6 +819,7 @@ export default {
       deleteArchive: 'Supprimer l\'archive',
       deleteConfirm: 'Supprimer "{{name}}" ? Cette action est irréversible.',
       deleteButton: 'Supprimer',
+      deletePurgeStats: 'Also remove this print from Quick Stats (filament, time, cost, energy)',
       removeSource3mf: 'Retirer Source 3MF',
       removeSource3mfConfirm: 'Retirer le fichier 3MF de "{{name}}" ?',
       removeButton: 'Retirer',

@@ -283,7 +283,7 @@ async def list_archives(
                 PrintArchive.created_at,
                 PrintArchive.content_hash,
                 func.lower(PrintArchive.print_name).label("print_name_lower"),
-            ).where(or_(*duplicate_group_conditions))
+            ).where(or_(*duplicate_group_conditions), PrintArchive.deleted_at.is_(None))
         )
 
         duplicate_groups_by_hash: dict[str, list[tuple[int, datetime]]] = defaultdict(list)
@@ -484,12 +484,15 @@ async def search_archives(
             select(PrintArchive)
             .options(selectinload(PrintArchive.project))
             .where(
-                (PrintArchive.print_name.ilike(like_pattern))
-                | (PrintArchive.filename.ilike(like_pattern))
-                | (PrintArchive.tags.ilike(like_pattern))
-                | (PrintArchive.notes.ilike(like_pattern))
-                | (PrintArchive.designer.ilike(like_pattern))
-                | (PrintArchive.filament_type.ilike(like_pattern))
+                (
+                    (PrintArchive.print_name.ilike(like_pattern))
+                    | (PrintArchive.filename.ilike(like_pattern))
+                    | (PrintArchive.tags.ilike(like_pattern))
+                    | (PrintArchive.notes.ilike(like_pattern))
+                    | (PrintArchive.designer.ilike(like_pattern))
+                    | (PrintArchive.filament_type.ilike(like_pattern))
+                ),
+                PrintArchive.deleted_at.is_(None),
             )
             .order_by(PrintArchive.created_at.desc())
         )
@@ -509,8 +512,12 @@ async def search_archives(
     if not matched_ids:
         return []
 
-    # Fetch full archive records for matched IDs
-    query = select(PrintArchive).options(selectinload(PrintArchive.project)).where(PrintArchive.id.in_(matched_ids))
+    # Fetch full archive records for matched IDs (excluding soft-deleted, #1343)
+    query = (
+        select(PrintArchive)
+        .options(selectinload(PrintArchive.project))
+        .where(PrintArchive.id.in_(matched_ids), PrintArchive.deleted_at.is_(None))
+    )
 
     # Apply additional filters
     if printer_id:
@@ -1046,7 +1053,9 @@ async def get_all_tags(
     Returns a list of tags sorted by count (descending), then by name.
     """
     # Query all archives with non-null tags
-    result = await db.execute(select(PrintArchive.tags).where(PrintArchive.tags.isnot(None)))
+    result = await db.execute(
+        select(PrintArchive.tags).where(PrintArchive.tags.isnot(None), PrintArchive.deleted_at.is_(None))
+    )
     all_tags_rows = result.all()
 
     # Count occurrences of each tag
@@ -1087,7 +1096,9 @@ async def rename_tag(
         return {"affected": 0}
 
     # Find all archives containing the old tag
-    result = await db.execute(select(PrintArchive).where(PrintArchive.tags.isnot(None)))
+    result = await db.execute(
+        select(PrintArchive).where(PrintArchive.tags.isnot(None), PrintArchive.deleted_at.is_(None))
+    )
     archives = list(result.scalars().all())
 
     affected = 0
@@ -1123,7 +1134,9 @@ async def delete_tag(
     Returns the count of affected archives.
     """
     # Find all archives containing the tag
-    result = await db.execute(select(PrintArchive).where(PrintArchive.tags.isnot(None)))
+    result = await db.execute(
+        select(PrintArchive).where(PrintArchive.tags.isnot(None), PrintArchive.deleted_at.is_(None))
+    )
     archives = list(result.scalars().all())
 
     affected = 0
@@ -1150,7 +1163,11 @@ async def get_archive(
     """Get a specific archive."""
     service = ArchiveService(db)
     archive = await service.get_archive(archive_id)
-    if not archive:
+    # Soft-deleted archives are hidden from the UI (#1343) — surface them as
+    # 404 here too so a stale bookmark / direct URL doesn't expose a row the
+    # user has already removed. The hard-delete (?purge_stats=true) path
+    # bypasses this check by querying PrintArchive directly.
+    if not archive or archive.deleted_at is not None:
         raise HTTPException(404, "Archive not found")
 
     # Find duplicates
@@ -1494,6 +1511,15 @@ async def backfill_content_hashes(
 @router.delete("/{archive_id}")
 async def delete_archive(
     archive_id: int,
+    purge_stats: bool = Query(
+        False,
+        description=(
+            "When false (default) the archive is soft-deleted — files removed "
+            "from disk, row hidden from listings, but its filament / energy / "
+            "time / cost contribution stays in Quick Stats. Set true to also "
+            "drop the row from statistics (#1343)."
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
     auth_result: tuple[User | None, bool] = Depends(
         require_ownership_permission(
@@ -1502,7 +1528,7 @@ async def delete_archive(
         )
     ),
 ):
-    """Delete an archive."""
+    """Delete an archive (soft by default; ``?purge_stats=true`` to hard-delete)."""
     user, can_modify_all = auth_result
 
     # Get archive first to check ownership
@@ -1517,9 +1543,14 @@ async def delete_archive(
             raise HTTPException(403, "You can only delete your own archives")
 
     service = ArchiveService(db)
-    if not await service.delete_archive(archive_id):
+    if purge_stats:
+        if not await service.delete_archive(archive_id):
+            raise HTTPException(404, "Archive not found")
+        return {"status": "deleted", "purged_from_stats": True}
+
+    if not await service.soft_delete_archive(archive_id):
         raise HTTPException(404, "Archive not found")
-    return {"status": "deleted"}
+    return {"status": "deleted", "purged_from_stats": False}
 
 
 @router.get("/{archive_id}/download")

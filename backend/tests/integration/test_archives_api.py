@@ -196,6 +196,106 @@ class TestArchivesAPI:
 
         assert response.status_code == 404
 
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_soft_delete_preserves_stats_contribution(
+        self, async_client: AsyncClient, archive_factory, printer_factory, db_session
+    ):
+        """#1343: deleting an archive without ``purge_stats`` keeps its
+        contribution in Quick Stats. The row vanishes from listings but the
+        filament / time / cost totals stay intact.
+        """
+        printer = await printer_factory()
+        await archive_factory(
+            printer.id,
+            status="completed",
+            print_time_seconds=3600,
+            filament_used_grams=50.0,
+            cost=1.50,
+        )
+        archive_to_delete = await archive_factory(
+            printer.id,
+            status="completed",
+            print_time_seconds=7200,
+            filament_used_grams=100.0,
+            cost=3.00,
+        )
+
+        # Pre-delete: stats include both archives.
+        pre = (await async_client.get("/api/v1/archives/stats")).json()
+        assert pre["total_prints"] == 2
+        assert pre["total_filament_grams"] == 150.0
+        assert pre["total_cost"] == 4.50
+
+        # Soft delete (default — no purge_stats param).
+        resp = await async_client.delete(f"/api/v1/archives/{archive_to_delete.id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["purged_from_stats"] is False
+
+        # Listing hides the deleted archive…
+        listing = (await async_client.get("/api/v1/archives/")).json()
+        assert all(a["id"] != archive_to_delete.id for a in listing)
+
+        # …but stats still reflect both prints (the whole point of #1343).
+        post = (await async_client.get("/api/v1/archives/stats")).json()
+        assert post["total_prints"] == 2
+        assert post["total_filament_grams"] == 150.0
+        assert post["total_cost"] == 4.50
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_purge_stats_drops_archive_from_quick_stats(
+        self, async_client: AsyncClient, archive_factory, printer_factory, db_session
+    ):
+        """#1343: deleting with ``?purge_stats=true`` hard-deletes the row,
+        dropping its contribution from Quick Stats (the original behaviour,
+        now opt-in)."""
+        printer = await printer_factory()
+        keep = await archive_factory(printer.id, status="completed", filament_used_grams=50.0)
+        purge = await archive_factory(printer.id, status="completed", filament_used_grams=100.0)
+
+        resp = await async_client.delete(f"/api/v1/archives/{purge.id}?purge_stats=true")
+        assert resp.status_code == 200
+        assert resp.json()["purged_from_stats"] is True
+
+        stats = (await async_client.get("/api/v1/archives/stats")).json()
+        assert stats["total_prints"] == 1
+        assert stats["total_filament_grams"] == 50.0
+
+        # The kept archive is still listed.
+        listing = (await async_client.get("/api/v1/archives/")).json()
+        assert [a["id"] for a in listing] == [keep.id]
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_soft_deleted_archive_404_on_detail(
+        self, async_client: AsyncClient, archive_factory, printer_factory, db_session
+    ):
+        """A soft-deleted archive must 404 on GET — a stale bookmark or
+        direct URL should not expose a row the user has already removed."""
+        printer = await printer_factory()
+        archive = await archive_factory(printer.id)
+        await async_client.delete(f"/api/v1/archives/{archive.id}")
+        resp = await async_client.get(f"/api/v1/archives/{archive.id}")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_soft_deleted_archive_hidden_from_search(
+        self, async_client: AsyncClient, archive_factory, printer_factory, db_session
+    ):
+        """Search must skip soft-deleted archives. Uses the LIKE fallback by
+        querying a single-character pattern that the SQLite FTS5 rejects, so
+        the test covers the fallback path that the production FTS path also
+        respects."""
+        printer = await printer_factory()
+        archive = await archive_factory(printer.id, print_name="UniqueSoftDeleteCandidate")
+        await async_client.delete(f"/api/v1/archives/{archive.id}")
+        resp = await async_client.get("/api/v1/archives/search?q=UniqueSoftDeleteCandidate")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
     # ========================================================================
     # Statistics endpoints
     # ========================================================================

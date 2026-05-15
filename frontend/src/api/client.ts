@@ -3463,8 +3463,12 @@ export const api = {
     }),
   toggleFavorite: (id: number) =>
     request<Archive>(`/archives/${id}/favorite`, { method: 'POST' }),
-  deleteArchive: (id: number) =>
-    request<void>(`/archives/${id}`, { method: 'DELETE' }),
+  // Soft-deletes by default (#1343): files removed from disk, row hidden
+  // from listings, but its filament / time / cost / energy contribution
+  // stays in Quick Stats. Pass purgeStats=true to hard-delete and drop the
+  // row from statistics too.
+  deleteArchive: (id: number, purgeStats: boolean = false) =>
+    request<void>(`/archives/${id}${purgeStats ? '?purge_stats=true' : ''}`, { method: 'DELETE' }),
 
   // ========== Archive auto-purge (#1008 follow-up) ==========
   previewArchivePurge: (olderThanDays: number) =>

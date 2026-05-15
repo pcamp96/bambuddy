@@ -78,6 +78,13 @@ class PrintArchive(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    # Soft-delete sentinel (#1343). When non-null, the UI hides this archive
+    # from listings (its files have already been removed from disk) but the
+    # stats endpoint keeps counting it — deleting nine of ten Benchies no
+    # longer wipes their filament / time / cost contribution from Quick Stats.
+    # The opt-in "Also remove from statistics" checkbox in the delete dialog
+    # bypasses the soft-delete path and hard-deletes the row.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None, index=True)
 
     # User tracking (who uploaded/created this archive)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

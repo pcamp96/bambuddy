@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { Card, CardContent } from './Card';
@@ -14,6 +14,10 @@ interface ConfirmModalProps {
   variant?: 'danger' | 'warning' | 'default';
   isLoading?: boolean;
   loadingText?: string;
+  // Optional extra content rendered between the message and the buttons —
+  // used for opt-in checkboxes (e.g. the "Also remove from statistics"
+  // toggle in the archive delete confirmation, #1343).
+  children?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -28,6 +32,7 @@ export function ConfirmModal({
   variant = 'default',
   isLoading = false,
   loadingText,
+  children,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -78,6 +83,7 @@ export function ConfirmModal({
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
               <p className="text-bambu-gray text-sm whitespace-pre-line">{message}</p>
+              {children && <div className="mt-4">{children}</div>}
             </div>
           </div>
           <div className="flex gap-3 mt-6">

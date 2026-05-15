@@ -819,6 +819,7 @@ export default {
       deleteArchive: '删除归档',
       deleteConfirm: '确定要删除"{{name}}"吗？此操作无法撤销。',
       deleteButton: '删除',
+      deletePurgeStats: 'Also remove this print from Quick Stats (filament, time, cost, energy)',
       removeSource3mf: '移除源 3MF',
       removeSource3mfConfirm: '确定要从"{{name}}"中移除源 3MF 文件吗？这将删除原始切片项目文件。',
       removeButton: '移除',
