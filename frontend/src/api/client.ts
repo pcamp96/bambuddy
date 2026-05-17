@@ -2192,6 +2192,9 @@ export interface GitHubTestConnectionResponse {
   message: string;
   repo_name: string | null;
   permissions: Record<string, boolean> | null;
+  // true = confirmed private, false = confirmed public/internal,
+  // null = could not determine. Backend rejects save unless true.
+  is_private: boolean | null;
 }
 
 export interface GitHubBackupTriggerResponse {
