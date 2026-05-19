@@ -64,7 +64,7 @@ async def test_expected_archive_path_assigns_printer_id_when_unset():
     mock_archive.printer_id = None
     mock_archive.print_name = "A1 Tool Plate 3"
     mock_archive.status = "archived"
-    mock_archive.file_path = "/tmp/fake.3mf"
+    mock_archive.file_path = "/tmp/fake.3mf"  # nosec B108 — mock path; nothing ever writes to it
     mock_archive.energy_start_kwh = None
 
     register_expected_print(1, "bambu_lab_a1_tool_plate_3.gcode.3mf", archive_id=42, ams_mapping=None)
@@ -151,7 +151,7 @@ async def test_expected_archive_path_preserves_existing_printer_id():
     mock_archive.printer_id = 7  # already correct
     mock_archive.print_name = "MyModel"
     mock_archive.status = "archived"
-    mock_archive.file_path = "/tmp/fake.3mf"
+    mock_archive.file_path = "/tmp/fake.3mf"  # nosec B108 — mock path; nothing ever writes to it
     mock_archive.energy_start_kwh = None
 
     register_expected_print(7, "MyModel.3mf", archive_id=99, ams_mapping=None)

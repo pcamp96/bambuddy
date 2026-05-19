@@ -397,7 +397,7 @@ class TestUpload:
         succeeding on the printer side (v0.2.4.1 worked because the prior
         proceed-with-warning branch tolerated the noise).
         """
-        import ftplib
+        import ftplib  # nosec B402 — tests need the real ftplib to construct mock 426 responses
 
         local = tmp_path / "test.bin"
         local.write_bytes(b"data" * 256)  # 1024 bytes
@@ -427,7 +427,7 @@ class TestUpload:
         isn't on the server at full size (or SIZE itself fails), the upload
         must fail so the dispatcher doesn't send a print command for a
         partial 3MF."""
-        import ftplib
+        import ftplib  # nosec B402 — tests need the real ftplib to construct mock 426 responses
 
         local = tmp_path / "test.bin"
         local.write_bytes(b"data" * 256)
@@ -452,7 +452,7 @@ class TestUpload:
         """If SIZE itself fails (e.g. server too broken to answer), assume
         the worst and fail — better a retry than a print on a partial file.
         """
-        import ftplib
+        import ftplib  # nosec B402 — tests need the real ftplib to construct mock 426 responses
 
         local = tmp_path / "test.bin"
         local.write_bytes(b"data" * 256)
@@ -474,7 +474,7 @@ class TestUpload:
 
     def test_upload_bytes_426_with_intact_file_proceeds(self, ftp_client_factory, ftp_server):
         """upload_bytes() mirrors the same SIZE-verify logic as upload_file."""
-        import ftplib
+        import ftplib  # nosec B402 — tests need the real ftplib to construct mock 426 responses
 
         client = ftp_client_factory()
         client.connect()
@@ -495,7 +495,7 @@ class TestUpload:
 
     def test_upload_bytes_426_with_truncated_file_returns_false(self, ftp_client_factory, ftp_server):
         """The truncated branch for upload_bytes()."""
-        import ftplib
+        import ftplib  # nosec B402 — tests need the real ftplib to construct mock 426 responses
 
         client = ftp_client_factory()
         client.connect()
