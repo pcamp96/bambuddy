@@ -83,3 +83,5 @@ advertisements/
 
 # gitleaks reports
 gitleaks-report.json
+
+scripts/pip-audit.sh
