@@ -285,11 +285,28 @@ const ZH_TW_COGNATES = [
   'EC984C,#6CD4BC,A66EB9,D87694',
 ];
 
+// Spanish cognates — words/phrases that are genuinely identical in Spanish.
+const ES_COGNATES = [
+  'Error', 'Firmware', 'General', 'Control', 'Total', 'total', 'Material',
+  'Material:', 'Color', 'Hex', 'Local', 'Global', 'China', 'Editable',
+  'Normal', 'Metal', 'Multicolor', 'Proxy', 'Host', 'Factor', 'Original',
+  'Sport (124%)', 'Ludicrous (166%)', 'MakerWorld: {{designer}}',
+  '{{printer}}: {{error}}', 'Base: {{name}}',
+  '{{name}} — {{stage}} ({{percent}}%) — {{elapsed}}', 'total: {{minutes}} min',
+  '({{count}}/8)', 'Hex: #{{hex}}', '(25%, 50%, 75%)',
+  'EC984C,#6CD4BC,A66EB9,D87694', 'Est.',
+  'ntfy, Pushover, Discord, etc.',
+  'Box label (62 × 29 mm)',
+  'Avery L7160 — A4 sheet (38.1 × 63.5 mm × 21)',
+  'Avery 5160 — US Letter sheet (25.4 × 66.7 mm × 30)',
+];
+
 const IDENTICAL_TO_EN_ALLOWED = {
   de: new Set(DE_COGNATES),
   fr: new Set(FR_COGNATES),
   it: new Set(IT_COGNATES),
   ja: new Set(JA_COGNATES),
+  es: new Set(ES_COGNATES),
   'pt-BR': new Set(PT_BR_COGNATES),
   'zh-CN': new Set(ZH_CN_COGNATES),
   'zh-TW': new Set(ZH_TW_COGNATES),
