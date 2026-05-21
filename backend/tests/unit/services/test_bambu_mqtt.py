@@ -4084,6 +4084,47 @@ class TestStaleReconnect:
         assert mqtt_client.state.connected is True
         assert mqtt_client._stale_reconnecting is False
 
+    def test_check_staleness_logs_serial_hint_when_no_reports(self, mqtt_client, caplog):
+        """#1465 — a stale connection that never received a status report logs
+        an actionable serial-number hint, exactly once."""
+        import logging
+        import time
+
+        mqtt_client.state.connected = True
+        mqtt_client._last_message_time = time.time() - 120
+        mqtt_client._report_messages_since_connect = 0
+
+        with caplog.at_level(logging.WARNING):
+            mqtt_client.check_staleness()
+
+        assert mqtt_client._zero_report_hint_logged is True
+        assert any("zero status reports" in r.getMessage() for r in caplog.records)
+
+        # Re-arm staleness — the hint must not log a second time.
+        caplog.clear()
+        mqtt_client.state.connected = True
+        mqtt_client._last_message_time = time.time() - 120
+        mqtt_client._last_stale_reconnect = 0.0  # bypass the reconnect cooldown
+        with caplog.at_level(logging.WARNING):
+            mqtt_client.check_staleness()
+        assert not any("zero status reports" in r.getMessage() for r in caplog.records)
+
+    def test_check_staleness_no_serial_hint_when_reports_received(self, mqtt_client, caplog):
+        """A stale connection that DID receive reports (a normal mid-session
+        quiet gap) must not log the serial-number hint."""
+        import logging
+        import time
+
+        mqtt_client.state.connected = True
+        mqtt_client._last_message_time = time.time() - 120
+        mqtt_client._report_messages_since_connect = 5
+
+        with caplog.at_level(logging.WARNING):
+            mqtt_client.check_staleness()
+
+        assert mqtt_client._zero_report_hint_logged is False
+        assert not any("zero status reports" in r.getMessage() for r in caplog.records)
+
     def test_on_disconnect_skipped_during_stale_reconnect(self, mqtt_client):
         """_on_disconnect should not broadcast state when _stale_reconnecting is set."""
         state_changes = []
