@@ -364,6 +364,23 @@ def _clean_3mf_metadata(obj):
     return obj
 
 
+def _without_print_name(metadata: dict | None) -> dict | None:
+    """Drop the embedded 3MF Title (``print_name``) from library-file metadata.
+
+    The 3MF ``<metadata name="Title">`` holds the in-app project title — the
+    generic ``"Exported 3D Model"`` for a Bambu Studio "Save As", a marketing
+    title for a MakerWorld download — never the filename the user saved as.
+    The FileManager keys its display name, search and sort off ``print_name``,
+    so storing it makes every card show the wrong name (#1489). A library
+    file's display name is its filename; only ``PrintArchive`` carries a real
+    ``print_name``. Returns the input unchanged when there's nothing to strip;
+    otherwise a new dict (never mutates the argument).
+    """
+    if not metadata or "print_name" not in metadata:
+        return metadata
+    return {k: v for k, v in metadata.items() if k != "print_name"}
+
+
 async def save_3mf_bytes_to_library(
     db: AsyncSession,
     *,
@@ -435,7 +452,7 @@ async def save_3mf_bytes_to_library(
         file_size=len(file_bytes),
         file_hash=file_hash,
         thumbnail_path=to_relative_path(thumbnail_path) if thumbnail_path else None,
-        file_metadata=metadata,
+        file_metadata=_without_print_name(metadata),
         source_type=source_type,
         source_url=source_url,
         created_by_id=owner_id,
@@ -1378,7 +1395,7 @@ async def scan_external_folder(
                 file_size=stat.st_size,
                 file_hash=None,  # Skip hashing external files for performance
                 thumbnail_path=thumbnail_path,
-                file_metadata=file_metadata,
+                file_metadata=_without_print_name(file_metadata),
             )
             db.add(db_file)
             added += 1
@@ -1655,7 +1672,7 @@ async def upload_file(
             file_size=len(content),
             file_hash=file_hash,
             thumbnail_path=to_relative_path(thumbnail_path) if thumbnail_path else None,
-            file_metadata=metadata if metadata else None,
+            file_metadata=_without_print_name(metadata) if metadata else None,
             created_by_id=current_user.id if current_user else None,
         )
         db.add(library_file)
@@ -1908,7 +1925,7 @@ async def extract_zip_file(
                         file_size=len(file_content),
                         file_hash=file_hash,
                         thumbnail_path=to_relative_path(thumbnail_path) if thumbnail_path else None,
-                        file_metadata=metadata if metadata else None,
+                        file_metadata=_without_print_name(metadata) if metadata else None,
                         created_by_id=current_user.id if current_user else None,
                     )
                     db.add(library_file)
@@ -3152,14 +3169,10 @@ async def slice_and_persist(
     except Exception as exc:
         logger.warning("Failed to parse sliced 3MF metadata for %s: %s", out_filename, exc)
 
-    # The parsed 3MF metadata carries a `print_name` lifted from the source
-    # file's embedded settings (BambuStudio always sets this; OrcaSlicer
-    # often leaves it blank). The FileManager listing prefers print_name
-    # over filename for display, which makes a sliced row indistinguishable
-    # from its source. Drop print_name so the listing falls back to the
-    # actual filename — which already ends in ".gcode.3mf" and self-describes
-    # as the sliced output.
-    metadata: dict = {k: v for k, v in parsed_metadata.items() if k != "print_name"}
+    # Drop the embedded `print_name` (see _without_print_name) so the sliced
+    # row's display falls back to its ".gcode.3mf" filename instead of the
+    # source file's project title, which would make the two indistinguishable.
+    metadata: dict = dict(_without_print_name(parsed_metadata) or {})
     metadata.update(
         {
             "print_time_seconds": result.print_time_seconds,
@@ -3637,9 +3650,8 @@ async def update_file(
         if "/" in data.filename or "\\" in data.filename:
             raise HTTPException(status_code=400, detail="Filename cannot contain path separators")
         file.filename = data.filename
-        # Also update print_name in file_metadata so the display name matches
-        if file.file_metadata and "print_name" in file.file_metadata:
-            file.file_metadata = {**file.file_metadata, "print_name": data.filename}
+        # No print_name to keep in sync — library files display by filename,
+        # and _without_print_name strips the embedded 3MF Title on import (#1489).
 
     if data.folder_id is not None:
         if data.folder_id == 0:

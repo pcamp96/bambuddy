@@ -415,6 +415,39 @@ async def _migrate_normalize_printer_ids(conn) -> None:
             await conn.execute(text("UPDATE api_keys SET printer_ids = NULL WHERE printer_ids::text = '[]'"))
 
 
+async def _migrate_drop_library_print_name(conn) -> None:
+    """Strip the embedded 3MF Title (``print_name``) from library file metadata (#1489).
+
+    Library files stored the 3MF's ``<metadata name="Title">`` as
+    ``file_metadata.print_name`` — generic ("Exported 3D Model") for Bambu
+    Studio exports, a marketing title for MakerWorld downloads — and the
+    FileManager wrongly preferred it over the filename for the card label,
+    search and sort. New imports no longer store it; this clears it from rows
+    imported before the fix so existing libraries don't need a rename
+    round-trip. Idempotent — rows without the key are untouched.
+    """
+    from sqlalchemy import text
+
+    async with conn.begin_nested():
+        if is_sqlite():
+            await conn.execute(
+                text(
+                    "UPDATE library_files SET file_metadata = json_remove(file_metadata, '$.print_name') "
+                    "WHERE json_extract(file_metadata, '$.print_name') IS NOT NULL"
+                )
+            )
+        else:
+            # file_metadata is a JSON (not JSONB) column — cast to jsonb for the
+            # key-exists test (jsonb_exists, avoiding the `?` operator which
+            # clashes with driver parameter syntax) and the `- key` removal.
+            await conn.execute(
+                text(
+                    "UPDATE library_files SET file_metadata = (file_metadata::jsonb - 'print_name')::json "
+                    "WHERE jsonb_exists(file_metadata::jsonb, 'print_name')"
+                )
+            )
+
+
 async def _migrate_update_auto_link_constraint(conn) -> None:
     """Update the auto_link CHECK constraint to allow Fall C (custom email claim).
 
@@ -2614,6 +2647,10 @@ async def run_migrations(conn):
             conn,
             "ALTER TABLE smart_plugs ADD COLUMN IF NOT EXISTS off_delay_after_drying_minutes INTEGER DEFAULT 10",
         )
+
+    # Data migration: drop the embedded 3MF Title (`print_name`) from library
+    # file metadata so the FileManager displays the filename, not the title (#1489).
+    await _migrate_drop_library_print_name(conn)
 
 
 async def seed_notification_templates():
