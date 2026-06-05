@@ -449,13 +449,21 @@ async def save_3mf_bytes_to_library(
         if existing_row is not None:
             return existing_row, True
 
-    # Persist bytes to disk under a UUID-scoped filename; keep the original
-    # extension so downstream logic (ThreeMFParser, thumbnail viewer) works.
-    ext = os.path.splitext(filename)[1].lower() or ".3mf"
-    unique_filename = f"{uuid.uuid4().hex}{ext}"
-    file_path = (
-        get_library_files_dir() / unique_filename
-    )  # SEC-PATH-OK: unique_filename = uuid.uuid4().hex + ext, generated on the previous line
+    # Resolve target folder so writable-external destinations land on the
+    # mount with the real filename, instead of being silently misrouted to
+    # the internal library dir with a UUID name (#1645). Mirrors what the
+    # multipart-upload path has done since #1112. ``_resolve_upload_destination``
+    # also enforces the 403 read-only / 400 unwritable / 409 collision
+    # rejections — the makerworld route layer already pre-checks read-only,
+    # but the helper's checks remain as defence-in-depth for any future
+    # caller that skips that route gate.
+    target_folder: LibraryFolder | None = None
+    if folder_id is not None:
+        folder_q = await db.execute(select(LibraryFolder).where(LibraryFolder.id == folder_id))
+        target_folder = folder_q.scalar_one_or_none()
+
+    file_path, is_external = _resolve_upload_destination(target_folder, filename)
+    ext = file_path.suffix.lower() or ".3mf"
     with open(file_path, "wb") as fh:
         fh.write(file_bytes)
 
@@ -486,8 +494,9 @@ async def save_3mf_bytes_to_library(
 
     library_file = LibraryFile(
         folder_id=folder_id,
+        is_external=is_external,
         filename=filename,
-        file_path=to_relative_path(file_path),
+        file_path=_stored_file_path(file_path, is_external),
         file_type=classify_file_type(filename),
         file_size=len(file_bytes),
         file_hash=file_hash,
