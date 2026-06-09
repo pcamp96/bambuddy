@@ -1651,7 +1651,7 @@ class TestUploadSourceThreeMF:
         archive = await archive_factory(
             printer.id,
             print_name="Corrupt Path",
-            file_path="/tmp/totally_outside.gcode.3mf",
+            file_path="/tmp/totally_outside.gcode.3mf",  # nosec B108
             filename="totally_outside.gcode.3mf",
         )
 
@@ -1661,4 +1661,4 @@ class TestUploadSourceThreeMF:
         assert response.status_code == 500
         assert "outside the data directory" in response.json()["detail"]
         # Did not write anything under the bogus /tmp/source/ either.
-        assert not (Path("/tmp") / "source").exists() or not (Path("/tmp") / "source" / "totally_outside.3mf").exists()
+        assert not (Path("/tmp") / "source").exists() or not (Path("/tmp") / "source" / "totally_outside.3mf").exists()  # nosec B108
