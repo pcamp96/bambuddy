@@ -20,19 +20,30 @@ group — but anyone in that position would expect the boundary the
 comments described.
 """
 
+import secrets
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
 from backend.app.models.group import Group
 
-# Test-only fixture credential. Not a secret. Built from parts so secret
-# scanners don't flag every call site as a leaked password. Satisfies the
-# password complexity validator in ``schemas/auth.py`` (upper + lower +
-# digit + symbol, min length 8) so the setup / create / login round-trips
-# succeed; the actual value is irrelevant — these tests assert the admin
-# authorization gate, not password handling.
-_FIXTURE_PW = "Aa1!" + ("x" * 8)
+
+def _make_fixture_password() -> str:
+    """Build a per-run test credential at import time.
+
+    Tests in this module exercise the admin authorization gate, not
+    password handling — the value is irrelevant as long as the same
+    string is used at setup/create and at login. Generating the random
+    body with :mod:`secrets` keeps any literal out of the source so
+    secret scanners don't flag the file. The four-char prefix satisfies
+    the password-complexity validator in :mod:`backend.app.schemas.auth`
+    (upper + lower + digit + symbol).
+    """
+    return "Aa1!" + secrets.token_urlsafe(12)
+
+
+_FIXTURE_PW = _make_fixture_password()  # pragma: allowlist secret
 
 
 async def _setup_admin(async_client: AsyncClient, username: str = "secadmin") -> str:
