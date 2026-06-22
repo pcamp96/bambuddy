@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.app.core.local_config import read_local_toml
+from backend.app.core.local_config import read_local_toml, read_ntp_gate
 
 
 def test_missing_file_returns_empty(tmp_path: Path):
@@ -90,3 +90,59 @@ def test_escaped_characters_round_trip(tmp_path: Path):
     path.write_text('hostname = "with\\"quote"\n')
     result = read_local_toml(path)
     assert result == {"hostname": 'with"quote'}
+
+
+# ---------------------------------------------------------------------------
+# read_ntp_gate
+# ---------------------------------------------------------------------------
+
+
+def test_ntp_gate_missing_returns_none(tmp_path: Path):
+    assert read_ntp_gate(tmp_path / "absent") is None
+
+
+def test_ntp_gate_ok(tmp_path: Path):
+    path = tmp_path / "time-synced"
+    path.write_text("ok\n")
+    assert read_ntp_gate(path) == "ok"
+
+
+def test_ntp_gate_warning(tmp_path: Path):
+    path = tmp_path / "time-synced"
+    path.write_text("warning: ntp sync timed out\n")
+    assert read_ntp_gate(path) == "warning"
+
+
+def test_ntp_gate_warning_no_suffix(tmp_path: Path):
+    """Just 'warning' on its own is also accepted."""
+    path = tmp_path / "time-synced"
+    path.write_text("warning\n")
+    assert read_ntp_gate(path) == "warning"
+
+
+def test_ntp_gate_empty_returns_none(tmp_path: Path):
+    """Empty / surprise content is treated as unknown rather than misclassified."""
+    path = tmp_path / "time-synced"
+    path.write_text("")
+    assert read_ntp_gate(path) is None
+
+
+def test_ntp_gate_unknown_marker_returns_none(tmp_path: Path):
+    path = tmp_path / "time-synced"
+    path.write_text("synced via remote NTP\n")  # neither 'ok' nor 'warning'
+    assert read_ntp_gate(path) is None
+
+
+def test_ntp_gate_strips_whitespace(tmp_path: Path):
+    """Leading whitespace shouldn't trick a startswith check."""
+    path = tmp_path / "time-synced"
+    path.write_text("   ok\n")
+    assert read_ntp_gate(path) == "ok"
+
+
+def test_ntp_gate_binary_garbage_returns_none(tmp_path: Path, caplog: pytest.LogCaptureFixture):
+    """Defensive read mode survives non-utf8 content without crashing."""
+    path = tmp_path / "time-synced"
+    path.write_bytes(b"\xff\xfe\x00\x01ok\n")
+    # errors="replace" maps the bytes through but the prefix is no longer 'ok'.
+    assert read_ntp_gate(path) is None

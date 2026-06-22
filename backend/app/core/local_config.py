@@ -1,33 +1,43 @@
 """
-Read /etc/bambuddy/local.toml — the file the appliance setup wizard writes
-during firstboot to capture the user's hostname, timezone, and locale.
+Small readers for appliance-set state files.
+
+Two distinct surfaces, same shape (defensive, silent on missing files,
+side-effect-free):
+
+- ``read_local_toml`` reads ``/etc/bambuddy/local.toml`` (the file the
+  appliance setup wizard writes during firstboot with the user's hostname,
+  timezone, and locale).
+- ``read_ntp_gate`` reads ``/run/bambuddy/time-synced`` (the appliance's
+  ntp-gate.sh signals time-sync state here once chrony reports sync, or
+  when the 3-minute timeout elapses with a "warning" marker).
 
 Universal across install shapes:
 
-- On the Bambuddy Appliance: the wizard writes this file before bambuddy.service
-  starts; we read it on every startup to surface defaults to the frontend.
-- On Docker / manual installs: the file is absent; we degrade silently. An
-  operator who wants to seed defaults can drop their own local.toml into the
-  expected path or override via DATA_DIR.
+- On the Bambuddy Appliance: both files exist by the time bambuddy.service
+  starts; we surface their values to the frontend.
+- On Docker / manual installs: both files are absent; we degrade silently.
 
-The reader is read-only and side-effect-free. It does NOT call hostnamectl
-or timedatectl — that's the appliance's firstboot.sh responsibility (it has
-the root privileges to do so and runs before this process exists). What we
-do here is expose the values the wizard collected so the frontend i18n
-bootstrap can pick the right initial language.
+These readers are read-only and side-effect-free. They do NOT call
+hostnamectl / timedatectl / chronyc — system-state changes are the
+appliance's firstboot.sh responsibility (root, runs before this process
+exists). Here we just expose state so the frontend can render accordingly.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 import tomllib
 
 log = logging.getLogger(__name__)
 
 DEFAULT_PATH = Path("/etc/bambuddy/local.toml")
+DEFAULT_NTP_GATE_PATH = Path("/run/bambuddy/time-synced")
+
+# Three states: synced ("ok"), gated-and-timed-out ("warning"), or unknown (None).
+TimeSyncState = Literal["ok", "warning"] | None
 
 
 class LocalConfig(TypedDict, total=False):
@@ -62,3 +72,31 @@ def read_local_toml(path: Path = DEFAULT_PATH) -> LocalConfig:
             continue
         result[key] = value  # type: ignore[literal-required]
     return result
+
+
+def read_ntp_gate(path: Path = DEFAULT_NTP_GATE_PATH) -> TimeSyncState:
+    """Read the appliance NTP gate file. Returns "ok", "warning", or None.
+
+    Wire contract with bambuddy-appliance/firstboot/ntp-gate.sh:
+      - File absent: gate hasn't been evaluated yet, or this isn't an appliance
+        install. Caller should treat as "unknown / don't gate."
+      - File content starts with "ok": chrony reported sync within 3 minutes.
+      - File content starts with "warning": 3-minute timeout elapsed without
+        sync. The user has already waited and the wizard proceeded with a
+        degraded clock — auth tokens may have incorrect expiry, TLS certs may
+        fail validation. UI should surface this.
+      - Anything else: defensive fall-through to None.
+    """
+    try:
+        body = path.read_text(errors="replace").strip()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        log.warning("ntp-gate file at %s could not be read: %s", path, exc)
+        return None
+
+    if body.startswith("ok"):
+        return "ok"
+    if body.startswith("warning"):
+        return "warning"
+    return None

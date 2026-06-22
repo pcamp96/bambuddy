@@ -497,7 +497,7 @@ class TestSystemApplianceAPI:
 
         assert response.status_code == 200
         body = response.json()
-        assert body == {"hostname": None, "timezone": None, "locale": None}
+        assert body == {"hostname": None, "timezone": None, "locale": None, "time_synced": None}
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -513,11 +513,12 @@ class TestSystemApplianceAPI:
         response = await async_client.get("/api/v1/system/appliance")
 
         assert response.status_code == 200
-        assert response.json() == {
-            "hostname": "workshop-pi",
-            "timezone": "Europe/Berlin",
-            "locale": "de",
-        }
+        body = response.json()
+        assert body["hostname"] == "workshop-pi"
+        assert body["timezone"] == "Europe/Berlin"
+        assert body["locale"] == "de"
+        # time_synced state is host-dependent in this test; just assert the field exists.
+        assert "time_synced" in body
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -548,3 +549,57 @@ class TestSystemApplianceAPI:
         """
         response = await async_client.get("/api/v1/system/appliance")
         assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_appliance_endpoint_time_synced_ok(self, async_client: AsyncClient, tmp_path, monkeypatch):
+        """NTP gate written by ntp-gate.sh with 'ok' surfaces as time_synced='ok'."""
+        from backend.app.api.routes import system as system_routes
+        from backend.app.core import local_config
+
+        gate = tmp_path / "time-synced"
+        gate.write_text("ok\n")
+        monkeypatch.setattr(system_routes, "read_ntp_gate", lambda: local_config.read_ntp_gate(gate))
+
+        response = await async_client.get("/api/v1/system/appliance")
+        assert response.status_code == 200
+        assert response.json()["time_synced"] == "ok"
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_appliance_endpoint_time_synced_warning(
+        self,
+        async_client: AsyncClient,
+        tmp_path,
+        monkeypatch,
+    ):
+        """3-minute NTP timeout marker surfaces as time_synced='warning'."""
+        from backend.app.api.routes import system as system_routes
+        from backend.app.core import local_config
+
+        gate = tmp_path / "time-synced"
+        gate.write_text("warning: ntp sync timed out\n")
+        monkeypatch.setattr(system_routes, "read_ntp_gate", lambda: local_config.read_ntp_gate(gate))
+
+        response = await async_client.get("/api/v1/system/appliance")
+        assert response.status_code == 200
+        assert response.json()["time_synced"] == "warning"
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_appliance_endpoint_time_synced_absent(
+        self,
+        async_client: AsyncClient,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Non-appliance install: no gate file -> time_synced is null."""
+        from backend.app.api.routes import system as system_routes
+        from backend.app.core import local_config
+
+        absent = tmp_path / "no-gate-here"
+        monkeypatch.setattr(system_routes, "read_ntp_gate", lambda: local_config.read_ntp_gate(absent))
+
+        response = await async_client.get("/api/v1/system/appliance")
+        assert response.status_code == 200
+        assert response.json()["time_synced"] is None
