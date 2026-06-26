@@ -222,7 +222,7 @@ export interface CameraDiagnoseStage {
 
 export interface CameraDiagnoseResult {
   printer_id: number;
-  protocol: 'rtsp' | 'chamber_image';
+  protocol: 'rtsp' | 'chamber_image' | 'flashforge_mjpeg';
   port: number;
   // 'default' = historical X1/H2 tuning. Anything else = this model has
   // an override entry in backend/app/services/camera_profiles.py.
@@ -243,10 +243,16 @@ export interface DiagnosticCheck {
     | 'port_mqtt'
     | 'port_ftps'
     | 'port_rtsps'
+    | 'port_flashforge_api'
+    | 'port_flashforge_camera'
     | 'network_mode'
     | 'subnet'
+    | 'external_storage'
     | 'mqtt_auth'
-    | 'developer_mode';
+    | 'developer_mode'
+    | 'printer_publishing'
+    | 'flashforge_auth'
+    | 'flashforge_polling';
   status: DiagnosticStatus;
   params: Record<string, string | number>;
 }
@@ -330,6 +336,7 @@ export interface HMSError {
   attr: number;  // Attribute value for constructing wiki URL
   module: number;
   severity: number;  // 1=fatal, 2=serious, 3=common, 4=info
+  message?: string | null;
 }
 
 export interface AMSTray {
@@ -504,6 +511,31 @@ export interface PrinterStatus {
   awaiting_plate_clear: boolean;
   // AMS drying support
   supports_drying: boolean;
+  capabilities?: PrinterCapabilities;
+}
+
+export interface PrinterCapabilities {
+  can_pause: boolean;
+  can_resume: boolean;
+  can_stop: boolean;
+  can_clear_errors: boolean;
+  can_chamber_light: boolean;
+  can_print_speed: boolean;
+  can_set_temperature: boolean;
+  can_airduct_mode: boolean;
+  can_bed_jog: boolean;
+  can_home_axes: boolean;
+  can_skip_objects: boolean;
+  can_dry_filament: boolean;
+  can_calibrate: boolean;
+  can_upload_files: boolean;
+  can_list_files: boolean;
+  can_download_files: boolean;
+  can_delete_files: boolean;
+  can_preview_files: boolean;
+  can_browse_files: boolean;
+  can_stream_camera: boolean;
+  unsupported_reasons?: Record<string, string>;
 }
 
 export interface PrinterCreate {
@@ -3524,6 +3556,12 @@ export const api = {
       method: 'POST',
     }),
 
+  setTemperature: (printerId: number, heater: 'nozzle' | 'bed' | 'chamber', target: number) =>
+    request<{ success: boolean; message: string }>(
+      `/printers/${printerId}/temperature?heater=${heater}&target=${target}`,
+      { method: 'POST' }
+    ),
+
   setAirductMode: (printerId: number, mode: 'cooling' | 'heating') =>
     request<{ success: boolean; message: string }>(`/printers/${printerId}/airduct-mode?mode=${mode}`, {
       method: 'POST',
@@ -3629,7 +3667,18 @@ export const api = {
         size: number;
         path: string;
         mtime?: string;
+        printing_time?: number | null;
+        filament_weight?: number | null;
+        use_matl_station?: boolean | null;
+        thumbnail_url?: string | null;
       }>;
+      capabilities?: {
+        can_download: boolean;
+        can_delete: boolean;
+        can_preview: boolean;
+        can_browse_directories: boolean;
+        unsupported_reason?: string | null;
+      };
     }>(`/printers/${printerId}/files?path=${encodeURIComponent(path)}`),
   getPrinterFileDownloadUrl: (printerId: number, path: string) =>
     `${API_BASE}/printers/${printerId}/files/download?path=${encodeURIComponent(path)}`,
@@ -3660,6 +3709,8 @@ export const api = {
     }>(`/printers/${printerId}/files/plates?path=${encodeURIComponent(path)}`),
   getPrinterFilePlateThumbnail: (printerId: number, plateIndex: number, path: string) =>
     withStreamToken(`${API_BASE}/printers/${printerId}/files/plate-thumbnail/${plateIndex}?path=${encodeURIComponent(path)}`),
+  getPrinterFileThumbnailUrl: (printerId: number, path: string) =>
+    withStreamToken(`${API_BASE}/printers/${printerId}/files/thumbnail?path=${encodeURIComponent(path)}`),
   downloadPrinterFile: async (printerId: number, path: string): Promise<void> => {
     const headers: Record<string, string> = {};
     if (authToken) {

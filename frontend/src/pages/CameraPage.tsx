@@ -101,6 +101,9 @@ export function CameraPage() {
   });
 
   const isPrintingWithObjects = (status?.state === 'RUNNING' || status?.state === 'PAUSE') && (status?.printable_objects_count ?? 0) >= 2;
+  const capabilities = status?.capabilities;
+  const canControlChamberLight = capabilities?.can_chamber_light ?? true;
+  const canSkipObjects = capabilities?.can_skip_objects ?? true;
 
   // Update document title
   useEffect(() => {
@@ -651,28 +654,32 @@ export function CameraPage() {
               {t('camera.snapshot')}
             </button>
           </div>
-          <button
-            onClick={() => chamberLightMutation.mutate(!status?.chamber_light)}
-            disabled={!status?.connected || chamberLightMutation.isPending || !hasPermission('printers:control')}
-            className={`p-1.5 rounded disabled:opacity-50 ${status?.chamber_light ? 'bg-yellow-500/20 hover:bg-yellow-500/30' : 'hover:bg-bambu-dark-tertiary'}`}
-            title={!hasPermission('printers:control') ? t('printers.permission.noControl') : t('camera.chamberLight')}
-          >
-            <ChamberLight on={status?.chamber_light ?? false} className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setShowSkipObjectsModal(true)}
-            disabled={!isPrintingWithObjects || !hasPermission('printers:control')}
-            className={`p-1.5 rounded disabled:opacity-50 ${isPrintingWithObjects && hasPermission('printers:control') ? 'hover:bg-bambu-dark-tertiary' : ''}`}
-            title={
-              !hasPermission('printers:control')
-                ? t('printers.permission.noControl')
-                : !isPrintingWithObjects
-                  ? t('printers.skipObjects.onlyWhilePrinting')
-                  : t('printers.skipObjects.tooltip')
-            }
-          >
-            <SkipObjectsIcon className="w-4 h-4 text-bambu-gray" />
-          </button>
+          {canControlChamberLight && (
+            <button
+              onClick={() => chamberLightMutation.mutate(!status?.chamber_light)}
+              disabled={!status?.connected || chamberLightMutation.isPending || !hasPermission('printers:control')}
+              className={`p-1.5 rounded disabled:opacity-50 ${status?.chamber_light ? 'bg-yellow-500/20 hover:bg-yellow-500/30' : 'hover:bg-bambu-dark-tertiary'}`}
+              title={!hasPermission('printers:control') ? t('printers.permission.noControl') : t('camera.chamberLight')}
+            >
+              <ChamberLight on={status?.chamber_light ?? false} className="w-4 h-4" />
+            </button>
+          )}
+          {canSkipObjects && (
+            <button
+              onClick={() => setShowSkipObjectsModal(true)}
+              disabled={!isPrintingWithObjects || !hasPermission('printers:control')}
+              className={`p-1.5 rounded disabled:opacity-50 ${isPrintingWithObjects && hasPermission('printers:control') ? 'hover:bg-bambu-dark-tertiary' : ''}`}
+              title={
+                !hasPermission('printers:control')
+                  ? t('printers.permission.noControl')
+                  : !isPrintingWithObjects
+                    ? t('printers.skipObjects.onlyWhilePrinting')
+                    : t('printers.skipObjects.tooltip')
+              }
+            >
+              <SkipObjectsIcon className="w-4 h-4 text-bambu-gray" />
+            </button>
+          )}
           <button
             onClick={refresh}
             disabled={isDisabled}

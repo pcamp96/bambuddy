@@ -38,6 +38,14 @@ interface FileManagerModalProps {
   onClose: () => void;
 }
 
+type PrinterFileCapabilities = {
+  can_download: boolean;
+  can_delete: boolean;
+  can_preview: boolean;
+  can_browse_directories: boolean;
+  unsupported_reason?: string | null;
+};
+
 type PrinterViewerTab = '3d' | 'gcode';
 
 interface PrinterFileViewerModalProps {
@@ -268,6 +276,23 @@ function getFileIcon(filename: string, isDirectory: boolean) {
   }
 }
 
+function formatPrintSeconds(seconds?: number | null) {
+  if (!seconds || seconds <= 0) return null;
+  const totalMinutes = Math.max(1, Math.round(seconds / 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
+}
+
+function formatDisplayedFileSize(size: number, capabilities: PrinterFileCapabilities, unavailableLabel: string) {
+  if (size === 0 && !capabilities.can_download) {
+    return unavailableLabel;
+  }
+  return formatFileSize(size);
+}
+
 type SortOption = 'name-asc' | 'name-desc' | 'size-asc' | 'size-desc' | 'date-asc' | 'date-desc';
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
@@ -317,6 +342,20 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
     staleTime: 30000, // Cache for 30 seconds
   });
 
+  const capabilities = data?.capabilities ?? {
+    can_download: true,
+    can_delete: true,
+    can_preview: true,
+    can_browse_directories: true,
+    unsupported_reason: null,
+  };
+  const limitedCapabilitiesReason = capabilities.unsupported_reason
+    || t(
+      'printerFiles.limitedCapabilities',
+      'This printer exposes a read-only file list over LAN. Download, delete, and preview actions are unavailable.'
+    );
+  const sizeUnavailableLabel = t('printerFiles.sizeUnavailable', 'Size unavailable');
+
   const deleteMutation = useMutation({
     mutationFn: async (paths: string[]) => {
       // Delete files one by one
@@ -363,6 +402,7 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
 
   const selectAllFiles = () => {
     if (!data?.files) return;
+    if (!capabilities.can_download && !capabilities.can_delete) return;
     const filePaths = data.files
       .filter(f => !f.is_directory && (!searchQuery || f.name.toLowerCase().includes(searchQuery.toLowerCase())))
       .map(f => f.path);
@@ -375,6 +415,10 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
 
   const handleDownload = async () => {
     if (selectedFiles.size === 0) return;
+    if (!capabilities.can_download) {
+      showToast(t('printerFiles.toast.downloadUnsupported', 'This printer does not support wireless file downloads.'), 'error');
+      return;
+    }
 
     const paths = Array.from(selectedFiles);
 
@@ -410,6 +454,10 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
 
   const handleDelete = () => {
     if (selectedFiles.size === 0) return;
+    if (!capabilities.can_delete) {
+      showToast(t('printerFiles.toast.deleteUnsupported', 'This printer does not support wireless file deletion.'), 'error');
+      return;
+    }
     setFilesToDelete(Array.from(selectedFiles));
   };
 
@@ -474,10 +522,13 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
                 navigateToFolder(dir.path);
                 setSearchQuery('');
               }}
+              disabled={!capabilities.can_browse_directories && dir.path !== '/'}
               className={`px-3 py-1 text-sm rounded-full transition-colors ${
                 currentPath === dir.path
                   ? 'bg-bambu-green text-white'
-                  : 'bg-bambu-dark-tertiary text-bambu-gray hover:text-white'
+                  : !capabilities.can_browse_directories && dir.path !== '/'
+                    ? 'bg-bambu-dark-tertiary text-bambu-gray/40 cursor-not-allowed'
+                    : 'bg-bambu-dark-tertiary text-bambu-gray hover:text-white'
               }`}
             >
               {dir.label}
@@ -524,7 +575,7 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
         <div className="flex items-center gap-2 px-4 py-2 bg-bambu-dark text-sm flex-shrink-0">
             <button
               onClick={navigateUp}
-              disabled={currentPath === '/'}
+              disabled={currentPath === '/' || !capabilities.can_browse_directories}
               className="p-1 rounded hover:bg-bambu-dark-tertiary disabled:opacity-50 disabled:cursor-not-allowed"
               title="Go to parent folder"
               aria-label="Go to parent folder"
@@ -533,6 +584,13 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
             </button>
             <span className="text-bambu-gray font-mono">{currentPath}</span>
           </div>
+
+        {(!capabilities.can_download || !capabilities.can_delete || !capabilities.can_preview) && (
+          <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-200 flex items-center gap-2">
+            <HardDrive className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{limitedCapabilitiesReason}</span>
+          </div>
+        )}
 
         {/* File list */}
         <div className="flex-1 overflow-y-auto p-2 min-h-0">
@@ -593,13 +651,13 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
                             : 'hover:bg-bambu-dark-tertiary'
                         }`}
                         onClick={() => {
-                          if (file.is_directory) {
+                          if (file.is_directory && capabilities.can_browse_directories) {
                             navigateToFolder(file.path);
                           }
                         }}
                       >
                         {/* Checkbox for files only */}
-                        {!file.is_directory ? (
+                        {!file.is_directory && (capabilities.can_download || capabilities.can_delete) ? (
                           <button
                             onClick={(e) => toggleFileSelection(file.path, e)}
                             className="flex-shrink-0 text-bambu-gray hover:text-white"
@@ -611,18 +669,35 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
                             )}
                           </button>
                         ) : null}
-                        <FileIcon
-                          className={`w-5 h-5 flex-shrink-0 ${
-                            file.is_directory ? 'text-bambu-green' : 'text-bambu-gray'
-                          }`}
-                        />
+                        {file.thumbnail_url ? (
+                          <img
+                            src={api.getPrinterFileThumbnailUrl(printerId, file.path)}
+                            alt=""
+                            className="w-10 h-10 rounded object-cover bg-bambu-dark-tertiary flex-shrink-0"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <FileIcon
+                            className={`w-5 h-5 flex-shrink-0 ${
+                              file.is_directory ? 'text-bambu-green' : 'text-bambu-gray'
+                            }`}
+                          />
+                        )}
                         <span className="flex-1 text-white truncate">{file.name}</span>
                         {!file.is_directory && (
                           <div className="flex items-center gap-3">
+                            {(file.printing_time || file.filament_weight) && (
+                              <span className="text-xs text-bambu-gray hidden sm:inline">
+                                {[
+                                  formatPrintSeconds(file.printing_time),
+                                  file.filament_weight ? `${Number(file.filament_weight).toFixed(1)}g` : null,
+                                ].filter(Boolean).join(' · ')}
+                              </span>
+                            )}
                             <span className="text-sm text-bambu-gray">
-                              {formatFileSize(file.size)}
+                              {formatDisplayedFileSize(file.size, capabilities, sizeUnavailableLabel)}
                             </span>
-                            {(file.name.toLowerCase().endsWith('.3mf') || file.name.toLowerCase().endsWith('.gcode') || file.name.toLowerCase().endsWith('.stl')) && (
+                            {capabilities.can_preview && (file.name.toLowerCase().endsWith('.3mf') || file.name.toLowerCase().endsWith('.gcode') || file.name.toLowerCase().endsWith('.stl')) && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -636,7 +711,7 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
                             )}
                           </div>
                         )}
-                        {file.is_directory && (
+                        {file.is_directory && capabilities.can_browse_directories && (
                           <ChevronLeft className="w-4 h-4 text-bambu-gray rotate-180" />
                         )}
                       </div>
@@ -658,7 +733,7 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
               }
             </div>
             {/* Select All / Deselect All */}
-            {data?.files?.some(f => !f.is_directory) && (
+            {data?.files?.some(f => !f.is_directory) && (capabilities.can_download || capabilities.can_delete) && (
               <div className="flex items-center gap-2">
                 {selectedFiles.size > 0 ? (
                   <button
@@ -683,7 +758,7 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
           <div className="flex gap-2">
             <Button
               variant="secondary"
-              disabled={selectedFiles.size === 0 || downloadProgress !== null}
+              disabled={selectedFiles.size === 0 || downloadProgress !== null || !capabilities.can_download}
               onClick={handleDownload}
             >
               {downloadProgress ? (
@@ -700,7 +775,7 @@ export function FileManagerModal({ printerId, printerName, onClose }: FileManage
             </Button>
             <Button
               variant="secondary"
-              disabled={selectedFiles.size === 0 || deleteMutation.isPending}
+              disabled={selectedFiles.size === 0 || deleteMutation.isPending || !capabilities.can_delete}
               onClick={handleDelete}
               className="text-red-400 hover:text-red-300"
             >

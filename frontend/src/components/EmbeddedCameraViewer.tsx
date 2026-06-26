@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { X, RefreshCw, AlertTriangle, Maximize2, Minimize2, GripVertical, WifiOff, ZoomIn, ZoomOut, Fullscreen, Minimize, Stethoscope } from 'lucide-react';
-import { api, getAuthToken, withStreamToken } from '../api/client';
+import { api, getAuthToken, getStreamToken, withStreamToken } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { ChamberLight } from './icons/ChamberLight';
@@ -40,7 +40,7 @@ export function EmbeddedCameraViewer({ printerId, printerName, viewerIndex = 0, 
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, authEnabled, user } = useAuth();
 
   // Printer-specific storage key
   const storageKey = `${STORAGE_KEY_PREFIX}${printerId}`;
@@ -118,6 +118,17 @@ export function EmbeddedCameraViewer({ printerId, printerName, viewerIndex = 0, 
     refetchInterval: 30000,
     enabled: printerId > 0,
   });
+  const { data: streamTokenData } = useQuery({
+    queryKey: ['camera-stream-token', user?.id ?? null],
+    queryFn: () => api.getCameraStreamToken(),
+    enabled: printerId > 0 && (authEnabled ? !!user : true),
+    staleTime: 50 * 60 * 1000,
+  });
+  const streamTokenValue = streamTokenData?.token ?? getStreamToken();
+  const capabilities = status?.capabilities ?? {
+    can_chamber_light: true,
+    can_skip_objects: true,
+  };
 
   // Chamber light mutation with optimistic update
   const chamberLightMutation = useMutation({
@@ -555,7 +566,12 @@ export function EmbeddedCameraViewer({ printerId, printerName, viewerIndex = 0, 
     }
   }, [isDragging, isResizing, dragOffset]);
 
-  const streamUrl = withStreamToken(`/api/v1/printers/${printerId}/camera/stream?fps=15&t=${imageKey}`);
+  const waitingForStreamToken = authEnabled && !streamTokenValue;
+  const appendStreamToken = (url: string) =>
+    streamTokenValue ? `${url}&token=${encodeURIComponent(streamTokenValue)}` : withStreamToken(url);
+  const streamUrl = waitingForStreamToken
+    ? ''
+    : appendStreamToken(`/api/v1/printers/${printerId}/camera/stream?fps=15&t=${imageKey}`);
 
   return (
     <div
@@ -580,28 +596,32 @@ export function EmbeddedCameraViewer({ printerId, printerName, viewerIndex = 0, 
           <span className="truncate">{printer?.name || printerName}</span>
         </div>
         <div className="flex items-center gap-1 no-drag">
-          <button
-            onClick={() => chamberLightMutation.mutate(!status?.chamber_light)}
-            disabled={!status?.connected || chamberLightMutation.isPending || !hasPermission('printers:control')}
-            className={`p-1 rounded disabled:opacity-50 ${status?.chamber_light ? 'bg-yellow-500/20 hover:bg-yellow-500/30' : 'hover:bg-bambu-dark-tertiary'}`}
-            title={!hasPermission('printers:control') ? t('printers.permission.noControl') : t('camera.chamberLight')}
-          >
-            <ChamberLight on={status?.chamber_light ?? false} className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setShowSkipObjectsModal(true)}
-            disabled={!isPrintingWithObjects || !hasPermission('printers:control')}
-            className={`p-1 rounded disabled:opacity-50 ${isPrintingWithObjects && hasPermission('printers:control') ? 'hover:bg-bambu-dark-tertiary' : ''}`}
-            title={
-              !hasPermission('printers:control')
-                ? t('printers.permission.noControl')
-                : !isPrintingWithObjects
-                  ? t('printers.skipObjects.onlyWhilePrinting')
-                  : t('printers.skipObjects.tooltip')
-            }
-          >
-            <SkipObjectsIcon className="w-3.5 h-3.5 text-bambu-gray" />
-          </button>
+          {capabilities.can_chamber_light && (
+            <button
+              onClick={() => chamberLightMutation.mutate(!status?.chamber_light)}
+              disabled={!status?.connected || chamberLightMutation.isPending || !hasPermission('printers:control')}
+              className={`p-1 rounded disabled:opacity-50 ${status?.chamber_light ? 'bg-yellow-500/20 hover:bg-yellow-500/30' : 'hover:bg-bambu-dark-tertiary'}`}
+              title={!hasPermission('printers:control') ? t('printers.permission.noControl') : t('camera.chamberLight')}
+            >
+              <ChamberLight on={status?.chamber_light ?? false} className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {capabilities.can_skip_objects && (
+            <button
+              onClick={() => setShowSkipObjectsModal(true)}
+              disabled={!isPrintingWithObjects || !hasPermission('printers:control')}
+              className={`p-1 rounded disabled:opacity-50 ${isPrintingWithObjects && hasPermission('printers:control') ? 'hover:bg-bambu-dark-tertiary' : ''}`}
+              title={
+                !hasPermission('printers:control')
+                  ? t('printers.permission.noControl')
+                  : !isPrintingWithObjects
+                    ? t('printers.skipObjects.onlyWhilePrinting')
+                    : t('printers.skipObjects.tooltip')
+              }
+            >
+              <SkipObjectsIcon className="w-3.5 h-3.5 text-bambu-gray" />
+            </button>
+          )}
           <button
             onClick={refresh}
             disabled={streamLoading || isReconnecting}
@@ -699,22 +719,24 @@ export function EmbeddedCameraViewer({ printerId, printerName, viewerIndex = 0, 
               </div>
             </div>
           )}
-          <img
-            ref={imgRef}
-            key={imageKey}
-            src={streamUrl}
-            alt="Camera stream"
-            className="max-w-full max-h-full object-contain select-none"
-            style={{
-              transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px) rotate(${printer?.camera_rotation || 0}deg)`,
-              ...(printer?.camera_rotation === 90 || printer?.camera_rotation === 270 ? { maxWidth: '100%', maxHeight: '100%' } : {}),
-              cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default',
-            }}
-            onError={handleStreamError}
-            onLoad={handleStreamLoad}
-            onMouseDown={handleImageMouseDown}
-            draggable={false}
-          />
+          {!waitingForStreamToken && (
+            <img
+              ref={imgRef}
+              key={imageKey}
+              src={streamUrl}
+              alt="Camera stream"
+              className="max-w-full max-h-full object-contain select-none"
+              style={{
+                transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px) rotate(${printer?.camera_rotation || 0}deg)`,
+                ...(printer?.camera_rotation === 90 || printer?.camera_rotation === 270 ? { maxWidth: '100%', maxHeight: '100%' } : {}),
+                cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default',
+              }}
+              onError={handleStreamError}
+              onLoad={handleStreamLoad}
+              onMouseDown={handleImageMouseDown}
+              draggable={false}
+            />
+          )}
 
           {/* Zoom controls */}
           <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-black/60 rounded px-1.5 py-1 no-drag">

@@ -99,6 +99,30 @@ describe('CameraDiagnoseModal', () => {
     spy.mockRestore();
   });
 
+  it('renders FlashForge MJPEG diagnostic metadata', async () => {
+    const okResult: CameraDiagnoseResult = {
+      printer_id: 5,
+      protocol: 'flashforge_mjpeg',
+      port: 8080,
+      profile: 'default',
+      overall_status: 'ok',
+      stages: [
+        { name: 'tcp_reachable', status: 'ok', duration_ms: 10, code: null },
+        { name: 'first_frame', status: 'ok', duration_ms: 120, code: null },
+      ],
+      summary_code: 'all_ok',
+    };
+    const spy = vi.spyOn(api, 'diagnoseCamera').mockResolvedValue(okResult);
+
+    renderModal();
+
+    expect(await screen.findByText('flashforge_mjpeg')).toBeInTheDocument();
+    expect(screen.getByText('8080')).toBeInTheDocument();
+    expect(screen.getByText('default')).toBeInTheDocument();
+
+    spy.mockRestore();
+  });
+
   it('re-runs the diagnostic when the user clicks Run again', async () => {
     const okResult: CameraDiagnoseResult = {
       printer_id: 1,

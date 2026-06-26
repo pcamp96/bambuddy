@@ -2504,6 +2504,8 @@ export default {
     noFiles: 'No hay archivos en la impresora',
     loadingFiles: 'Cargando archivos...',
     failedToLoad: 'Error al cargar los archivos',
+    sizeUnavailable: "Tamaño no disponible",
+    limitedCapabilities: "Esta impresora expone por LAN una lista de archivos de solo lectura. Las acciones de descarga, eliminación y vista previa no están disponibles.",
     toast: {
       filesDeleted: 'Se eliminaron {{count}} archivo(s)',
       deleteFailed: 'Error al eliminar: {{error}}',
@@ -5679,6 +5681,16 @@ export default {
         pass: 'Accesible — la transmisión de la cámara funcionará.',
         warn: 'El puerto 322 no es accesible. La vista de la cámara en directo no funcionará. Esto no afecta a la impresión.',
       },
+      port_flashforge_api: {
+        title: "API local de FlashForge (8898)",
+        pass: "Accesible — Bambuddy puede comunicarse con la impresora mediante la API LAN de FlashForge.",
+        fail: "No se puede acceder al puerto 8898. La impresora está apagada, usa otra dirección IP o un firewall bloquea la API LAN de FlashForge.",
+      },
+      port_flashforge_camera: {
+        title: "Cámara FlashForge (MJPEG 8080)",
+        pass: "Accesible — la transmisión de la cámara debería funcionar.",
+        warn: "No se puede acceder al puerto 8080. La supervisión y la impresión podrían seguir funcionando, pero la vista de cámara en directo no.",
+      },
       network_mode: {
         title: 'Modo de red de Docker',
         pass: 'Ejecutándose en modo de red de host.',
@@ -5702,6 +5714,18 @@ export default {
         pass: 'El modo desarrollador está activado.',
         fail: 'El modo desarrollador está DESACTIVADO en la impresora. Actívelo en los ajustes de LAN de la impresora — y confirme con Aceptar. Sin él, las impresiones no comenzarán.',
         skip: 'No se pudo comprobar — requiere una conexión activa con la impresora.',
+      },
+      flashforge_auth: {
+        title: "Clave de dispositivo FlashForge",
+        pass: "La impresora aceptó el número de serie y la clave de dispositivo guardados.",
+        fail: "La impresora está accesible, pero rechazó las credenciales guardadas. Copia de nuevo la clave de dispositivo desde la página LAN de la impresora y actualiza esta impresora en Bambuddy.",
+        skip: "No comprobado — no se pudo acceder a la API local de FlashForge.",
+      },
+      flashforge_polling: {
+        title: "Conexión de sondeo de Bambuddy",
+        pass: "Bambuddy está recibiendo el estado de la impresora desde la API local de FlashForge.",
+        fail: "Bambuddy no está recibiendo el estado de la impresora ahora mismo. Comprueba la IP guardada, el número de serie y la clave de dispositivo, y reinicia el monitor de la impresora si hace falta.",
+        skip: "No comprobado — este monitor de impresora aún no está en ejecución.",
       },
       printer_publishing: {
         title: 'La impresora publica estado',

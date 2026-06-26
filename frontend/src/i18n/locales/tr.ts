@@ -2504,6 +2504,8 @@ export default {
     noFiles: 'Yazıcıda dosya yok',
     loadingFiles: 'Dosyalar yükleniyor...',
     failedToLoad: 'Dosyalar yüklenemedi',
+    sizeUnavailable: "Boyut kullanılamıyor",
+    limitedCapabilities: "Bu yazıcı LAN üzerinden yalnızca salt okunur bir dosya listesi sunuyor. İndirme, silme ve önizleme işlemleri kullanılamaz.",
     toast: {
       filesDeleted: '{{count}} dosya silindi',
       deleteFailed: 'Silme başarısız: {{error}}',
@@ -5609,6 +5611,16 @@ export default {
         pass: 'Erişilebilir — kamera akışı çalışacak.',
         warn: 'Port 322 erişilemez. Canlı kamera görünümü çalışmayacak. Bu, baskıyı etkilemez.',
       },
+      port_flashforge_api: {
+        title: "FlashForge yerel API (8898)",
+        pass: "Erişilebilir — Bambuddy, FlashForge LAN API üzerinden yazıcıyla konuşabiliyor.",
+        fail: "8898 numaralı porta ulaşılamıyor. Yazıcı kapalı, farklı bir IP adresinde ya da güvenlik duvarı FlashForge LAN API’yi engelliyor.",
+      },
+      port_flashforge_camera: {
+        title: "FlashForge kamera (MJPEG 8080)",
+        pass: "Erişilebilir — kamera akışı çalışmalıdır.",
+        warn: "8080 numaralı porta ulaşılamıyor. İzleme ve yazdırma çalışmaya devam edebilir, ancak canlı kamera görünümü çalışmaz.",
+      },
       network_mode: {
         title: 'Docker ağ modu',
         pass: 'Ana bilgisayar ağ modunda çalışıyor.',
@@ -5632,6 +5644,18 @@ export default {
         pass: 'Geliştirici Modu etkin.',
         fail: 'Yazıcıda Geliştirici Modu KAPALI. Yazıcının LAN ayarlarında etkinleştirin — ve OK ile onaylayın. Bu olmadan baskılar başlamayacak.',
         skip: 'Kontrol edilemedi — yazıcıya canlı bir bağlantı gerektirir.',
+      },
+      flashforge_auth: {
+        title: "FlashForge cihaz anahtarı",
+        pass: "Yazıcı kayıtlı seri numarasını ve cihaz anahtarını kabul etti.",
+        fail: "Yazıcıya ulaşılıyor, ancak kayıtlı kimlik bilgileri reddedildi. Cihaz anahtarını yazıcının LAN sayfasından yeniden kopyalayın ve bu yazıcıyı Bambuddy’de güncelleyin.",
+        skip: "Kontrol edilmedi — FlashForge yerel API’ye ulaşılamadı.",
+      },
+      flashforge_polling: {
+        title: "Bambuddy yoklama bağlantısı",
+        pass: "Bambuddy, FlashForge yerel API’den yazıcı durumunu alıyor.",
+        fail: "Bambuddy şu anda yazıcı durumunu almıyor. Kayıtlı IP adresini, seri numarasını ve cihaz anahtarını kontrol edin; gerekirse yazıcı izleyicisini yeniden başlatın.",
+        skip: "Kontrol edilmedi — bu yazıcı izleyicisi henüz çalışmıyor.",
       },
       printer_publishing: {
         title: 'Yazıcı durum yayını yapıyor',

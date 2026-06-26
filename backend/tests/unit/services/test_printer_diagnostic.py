@@ -21,7 +21,7 @@ def _statuses(result):
 
 def _port_probe(overrides=None):
     """Sync side_effect for _check_port. Defaults: every port reachable."""
-    reachable = {8883: True, 990: True, 322: True}
+    reachable = {8883: True, 990: True, 322: True, 8898: True, 8080: True}
     reachable.update(overrides or {})
 
     def _probe(ip, port, timeout=3.0):
@@ -50,6 +50,7 @@ class _Env:
         host_ip="192.168.1.5",
         state=None,
         test_connection_success=True,
+        flashforge_connection_success=True,
         report_messages_since_connect: int | None = 5,
     ):
         self.ports = ports or _port_probe()
@@ -58,6 +59,7 @@ class _Env:
         self.host_ip = host_ip
         self.state = state
         self.test_connection_success = test_connection_success
+        self.flashforge_connection_success = flashforge_connection_success
         # ``None`` means get_client returns None (e.g. pre-add flow); an int
         # means there's a client with that counter value.
         self.report_messages_since_connect = report_messages_since_connect
@@ -78,6 +80,13 @@ class _Env:
         self._stack.enter_context(patch(f"{MOD}._detect_docker_network_mode", return_value=self.network_mode))
         self._stack.enter_context(patch(f"{MOD}._get_host_ip", return_value=self.host_ip))
         self._stack.enter_context(patch(f"{MOD}.printer_manager", manager))
+        self._stack.enter_context(
+            patch(
+                f"{MOD}.probe_flashforge_connection",
+                new_callable=AsyncMock,
+                return_value={"success": self.flashforge_connection_success},
+            )
+        )
         return self
 
     def __exit__(self, *exc):
@@ -86,7 +95,13 @@ class _Env:
 
 
 def _printer(ip="192.168.1.50", model=None):
-    return types.SimpleNamespace(id=1, ip_address=ip, model=model)
+    return types.SimpleNamespace(
+        id=1,
+        ip_address=ip,
+        model=model,
+        serial_number="FF-TEST-SERIAL",
+        access_code="ff-test-key",
+    )
 
 
 class TestSameSubnet:
@@ -244,6 +259,78 @@ class TestPreAddFlow:
         with _Env():
             result = await run_connection_diagnostic("192.168.1.50")
         assert _statuses(result)["mqtt_auth"] == "skip"
+
+
+class TestFlashForgePrinter:
+    async def test_flashforge_uses_local_api_checks(self):
+        with _Env(
+            state=_state(connected=True),
+            flashforge_connection_success=True,
+        ):
+            result = await run_connection_diagnostic(
+                "192.168.1.50",
+                printer=_printer(model="Flashforge Creator 5 Pro"),
+            )
+        s = _statuses(result)
+        assert result.overall == "ok"
+        assert s == {
+            "port_flashforge_api": "pass",
+            "port_flashforge_camera": "pass",
+            "network_mode": "pass",
+            "subnet": "pass",
+            "flashforge_auth": "pass",
+            "flashforge_polling": "pass",
+        }
+
+    async def test_flashforge_api_port_unreachable_is_a_problem(self):
+        with _Env(
+            ports=_port_probe({8898: False}),
+            state=_state(connected=True),
+        ):
+            result = await run_connection_diagnostic(
+                "192.168.1.50",
+                printer=_printer(model="Creator 5 Pro"),
+            )
+        s = _statuses(result)
+        assert result.overall == "problems"
+        assert s["port_flashforge_api"] == "fail"
+        assert s["flashforge_auth"] == "skip"
+
+    async def test_flashforge_camera_port_only_warns(self):
+        with _Env(
+            ports=_port_probe({8080: False}),
+            state=_state(connected=True),
+        ):
+            result = await run_connection_diagnostic(
+                "192.168.1.50",
+                printer=_printer(model="FlashForge Creator 5 Pro"),
+            )
+        s = _statuses(result)
+        assert result.overall == "warnings"
+        assert s["port_flashforge_camera"] == "warn"
+
+    async def test_flashforge_bad_device_key_fails_auth(self):
+        with _Env(
+            state=_state(connected=True),
+            flashforge_connection_success=False,
+        ):
+            result = await run_connection_diagnostic(
+                "192.168.1.50",
+                printer=_printer(model="FlashForge Creator 5 Pro"),
+            )
+        s = _statuses(result)
+        assert result.overall == "problems"
+        assert s["flashforge_auth"] == "fail"
+
+    async def test_flashforge_polling_fails_when_status_is_disconnected(self):
+        with _Env(state=_state(connected=False)):
+            result = await run_connection_diagnostic(
+                "192.168.1.50",
+                printer=_printer(model="FlashForge Creator 5 Pro"),
+            )
+        s = _statuses(result)
+        assert result.overall == "problems"
+        assert s["flashforge_polling"] == "fail"
 
 
 class TestExternalStorageCheck:

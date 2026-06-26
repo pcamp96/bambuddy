@@ -140,6 +140,7 @@ class HMSErrorResponse(BaseModel):
     attr: int = 0  # Attribute value for constructing wiki URL
     module: int
     severity: int  # 1=fatal, 2=serious, 3=common, 4=info
+    message: str | None = None
 
 
 class AMSTray(BaseModel):
@@ -241,6 +242,30 @@ class PrintOptionsResponse(BaseModel):
     filament_tangle_detect: bool = False
 
 
+class PrinterCapabilities(BaseModel):
+    can_pause: bool = True
+    can_resume: bool = True
+    can_stop: bool = True
+    can_clear_errors: bool = True
+    can_chamber_light: bool = True
+    can_print_speed: bool = True
+    can_set_temperature: bool = False
+    can_airduct_mode: bool = True
+    can_bed_jog: bool = True
+    can_home_axes: bool = True
+    can_skip_objects: bool = True
+    can_dry_filament: bool = True
+    can_calibrate: bool = True
+    can_upload_files: bool = True
+    can_list_files: bool = True
+    can_download_files: bool = True
+    can_delete_files: bool = True
+    can_preview_files: bool = True
+    can_browse_files: bool = True
+    can_stream_camera: bool = True
+    unsupported_reasons: dict[str, str] = Field(default_factory=dict)
+
+
 class PrinterStatus(BaseModel):
     id: int
     name: str
@@ -316,6 +341,7 @@ class PrinterStatus(BaseModel):
     awaiting_plate_clear: bool = False
     # AMS drying support
     supports_drying: bool = False
+    capabilities: PrinterCapabilities = Field(default_factory=PrinterCapabilities)
     # Linked archive for the active print (resolved via subtask_id). Frontend uses
     # this to fetch plate metadata and show the plate name when the source 3MF is
     # multi-plate (#881 follow-up).

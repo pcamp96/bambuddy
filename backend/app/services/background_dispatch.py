@@ -573,6 +573,7 @@ class BackgroundDispatchService:
             printer_ip = printer.ip_address
             printer_access_code = printer.access_code
             printer_model = printer.model
+            printer_serial_number = printer.serial_number
             archive_filename = archive.filename
 
             if not printer_manager.is_connected(job.printer_id):
@@ -635,6 +636,7 @@ class BackgroundDispatchService:
                         progress_callback=upload_progress_callback,
                         socket_timeout=ftp_timeout,
                         printer_model=printer_model,
+                        serial_number=printer_serial_number,
                         max_retries=ftp_retry_count,
                         retry_delay=ftp_retry_delay,
                         operation_name=f"Upload for reprint to {printer_name}",
@@ -649,6 +651,7 @@ class BackgroundDispatchService:
                         progress_callback=upload_progress_callback,
                         socket_timeout=ftp_timeout,
                         printer_model=printer_model,
+                        serial_number=printer_serial_number,
                     )
 
                 if uploaded:
@@ -770,6 +773,7 @@ class BackgroundDispatchService:
             printer_ip = printer.ip_address
             printer_access_code = printer.access_code
             printer_model = printer.model
+            printer_serial_number = printer.serial_number
             library_filename = lib_file.filename
 
             if not printer_manager.is_connected(job.printer_id):
@@ -842,6 +846,7 @@ class BackgroundDispatchService:
                         progress_callback=upload_progress_callback,
                         socket_timeout=ftp_timeout,
                         printer_model=printer_model,
+                        serial_number=printer_serial_number,
                         max_retries=ftp_retry_count,
                         retry_delay=ftp_retry_delay,
                         operation_name=f"Upload for print to {printer_name}",
@@ -856,6 +861,7 @@ class BackgroundDispatchService:
                         progress_callback=upload_progress_callback,
                         socket_timeout=ftp_timeout,
                         printer_model=printer_model,
+                        serial_number=printer_serial_number,
                     )
 
                 if uploaded:

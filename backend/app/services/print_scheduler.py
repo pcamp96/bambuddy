@@ -2086,6 +2086,7 @@ class PrintScheduler:
                     remote_path,
                     socket_timeout=ftp_timeout,
                     printer_model=printer.model,
+                    serial_number=printer.serial_number,
                     max_retries=ftp_retry_count,
                     retry_delay=ftp_retry_delay,
                     operation_name=f"Upload print to {printer.name}",
@@ -2098,6 +2099,7 @@ class PrintScheduler:
                     remote_path,
                     socket_timeout=ftp_timeout,
                     printer_model=printer.model,
+                    serial_number=printer.serial_number,
                 )
         except Exception as e:
             uploaded = False

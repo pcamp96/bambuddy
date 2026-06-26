@@ -2501,6 +2501,8 @@ export default {
     noFiles: 'Keine Dateien auf dem Drucker',
     loadingFiles: 'Dateien werden geladen...',
     failedToLoad: 'Dateien konnten nicht geladen werden',
+    sizeUnavailable: "Größe nicht verfügbar",
+    limitedCapabilities: "Dieser Drucker stellt über LAN nur eine schreibgeschützte Dateiliste bereit. Download, Löschen und Vorschau sind nicht verfügbar.",
     toast: {
       filesDeleted: '{{count}} Datei(en) gelöscht',
       deleteFailed: 'Löschen fehlgeschlagen: {{error}}',
@@ -5670,6 +5672,16 @@ export default {
         pass: 'Erreichbar — der Kamerastream funktioniert.',
         warn: 'Port 322 ist nicht erreichbar. Die Live-Kameraansicht funktioniert nicht. Dies betrifft das Drucken nicht.',
       },
+      port_flashforge_api: {
+        title: "FlashForge lokale API (8898)",
+        pass: "Erreichbar — Bambuddy kann über die FlashForge-LAN-API mit dem Drucker kommunizieren.",
+        fail: "Port 8898 ist nicht erreichbar. Der Drucker ist ausgeschaltet, hat eine andere IP-Adresse oder eine Firewall blockiert die FlashForge-LAN-API.",
+      },
+      port_flashforge_camera: {
+        title: "FlashForge-Kamera (MJPEG 8080)",
+        pass: "Erreichbar — der Kamerastream sollte funktionieren.",
+        warn: "Port 8080 ist nicht erreichbar. Überwachung und Drucken können weiter funktionieren, aber die Live-Kameraansicht nicht.",
+      },
       network_mode: {
         title: 'Docker-Netzwerkmodus',
         pass: 'Läuft im Host-Netzwerkmodus.',
@@ -5693,6 +5705,18 @@ export default {
         pass: 'Der Entwicklermodus ist aktiviert.',
         fail: 'Der Entwicklermodus ist am Drucker AUS. Aktivieren Sie ihn in den LAN-Einstellungen des Druckers — und bestätigen Sie mit OK. Ohne ihn starten Drucke nicht.',
         skip: 'Konnte nicht geprüft werden — erfordert eine aktive Verbindung zum Drucker.',
+      },
+      flashforge_auth: {
+        title: "FlashForge-Geräteschlüssel",
+        pass: "Der Drucker hat die gespeicherte Seriennummer und den Geräteschlüssel akzeptiert.",
+        fail: "Der Drucker ist erreichbar, hat die gespeicherten Zugangsdaten aber abgelehnt. Kopiere den Geräteschlüssel von der LAN-Seite des Druckers erneut und aktualisiere diesen Drucker in Bambuddy.",
+        skip: "Nicht geprüft — die lokale FlashForge-API konnte nicht erreicht werden.",
+      },
+      flashforge_polling: {
+        title: "Bambuddy-Abfrageverbindung",
+        pass: "Bambuddy empfängt Druckerstatus über die lokale FlashForge-API.",
+        fail: "Bambuddy empfängt derzeit keinen Druckerstatus. Prüfe gespeicherte IP-Adresse, Seriennummer und Geräteschlüssel und starte den Druckermonitor bei Bedarf neu.",
+        skip: "Nicht geprüft — dieser Druckermonitor läuft noch nicht.",
       },
       printer_publishing: {
         title: 'Drucker sendet Statusmeldungen',

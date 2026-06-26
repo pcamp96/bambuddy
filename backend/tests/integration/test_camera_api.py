@@ -3,6 +3,7 @@
 Tests the full request/response cycle for /api/v1/printers/{id}/camera/ endpoints.
 """
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -240,6 +241,40 @@ class TestCameraAPI:
         assert [s["name"] for s in body["stages"]] == ["tcp_reachable", "first_frame"]
         assert body["stages"][1]["code"] == "no_frame"
 
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_camera_diagnose_flashforge_reports_mjpeg_protocol(self, async_client: AsyncClient, printer_factory):
+        """The Diagnose button should use FlashForge's MJPEG path, not Bambu RTSP metadata."""
+        printer = await printer_factory(model="FlashForge Creator 5 Pro")
+
+        async def _tcp_ok(*_a, **_kw):
+            writer = AsyncMock()
+            return AsyncMock(), writer
+
+        with (
+            patch("backend.app.services.camera_diagnose.asyncio.open_connection", new=_tcp_ok),
+            patch(
+                "backend.app.services.camera_diagnose.read_flashforge_mjpeg_frame",
+                new_callable=AsyncMock,
+                return_value=b"\xff\xd8\xff\xe0frame",
+            ),
+            patch(
+                "backend.app.services.camera_diagnose.capture_camera_frame_bytes",
+                new_callable=AsyncMock,
+            ) as bambu_capture,
+        ):
+            response = await async_client.post(f"/api/v1/printers/{printer.id}/camera/diagnose")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["printer_id"] == printer.id
+        assert body["protocol"] == "flashforge_mjpeg"
+        assert body["port"] == 8080
+        assert body["overall_status"] == "ok"
+        assert body["summary_code"] == "all_ok"
+        assert [s["name"] for s in body["stages"]] == ["tcp_reachable", "first_frame"]
+        bambu_capture.assert_not_awaited()
+
     # ========================================================================
     # Camera Snapshot Endpoint
     # ========================================================================
@@ -361,6 +396,28 @@ class TestCameraAPI:
         assert response.status_code == 503
         assert "external camera" in response.json()["detail"].lower()
 
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_camera_snapshot_flashforge_uses_local_mjpeg_reader(self, async_client: AsyncClient, printer_factory):
+        """FlashForge snapshots come from the printer's local MJPEG endpoint."""
+        printer = await printer_factory(model="FlashForge Creator 5 Pro")
+        fake_jpeg = b"\xff\xd8\xff\xe0flashforge-frame"
+
+        with (
+            patch(
+                "backend.app.api.routes.camera.read_flashforge_mjpeg_frame",
+                new=AsyncMock(return_value=fake_jpeg),
+            ) as read_mock,
+            patch("backend.app.api.routes.camera.capture_camera_frame", new_callable=AsyncMock) as capture_mock,
+        ):
+            response = await async_client.get(f"/api/v1/printers/{printer.id}/camera/snapshot")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/jpeg"
+        assert response.content == fake_jpeg
+        read_mock.assert_awaited_once_with(printer.ip_address, timeout=15.0)
+        capture_mock.assert_not_called()
+
     # ========================================================================
     # Camera Stream Endpoint
     # ========================================================================
@@ -391,6 +448,45 @@ class TestCameraAPI:
             )
             # Response will be a streaming response with error
             assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_flashforge_polling_stream_updates_camera_status(self, async_client: AsyncClient, printer_factory):
+        """FlashForge stream frames must update status bookkeeping for stall detection."""
+        from backend.app.api.routes import camera as camera_routes
+
+        printer = await printer_factory(model="FlashForge Creator 5 Pro")
+        fake_jpeg = b"\xff\xd8\xff\xe0flashforge-stream-frame"
+
+        stream = camera_routes._generate_flashforge_polling_stream(printer.id, printer.ip_address, fps=1)
+        try:
+            with patch(
+                "backend.app.api.routes.camera.read_flashforge_mjpeg_frame",
+                new=AsyncMock(return_value=fake_jpeg),
+            ):
+                frame = await anext(stream)
+        finally:
+            await stream.aclose()
+
+        assert frame.startswith(b"--frame\r\nContent-Type: image/jpeg")
+        assert camera_routes._last_frames[printer.id] == fake_jpeg
+        assert printer.id in camera_routes._last_frame_times
+
+        camera_routes._active_external_streams.add(printer.id)
+        camera_routes._stream_start_times[printer.id] = time.time() - 1
+        try:
+            response = await async_client.get(f"/api/v1/printers/{printer.id}/camera/status")
+        finally:
+            camera_routes._active_external_streams.discard(printer.id)
+            camera_routes._last_frames.pop(printer.id, None)
+            camera_routes._last_frame_times.pop(printer.id, None)
+            camera_routes._stream_start_times.pop(printer.id, None)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["active"] is True
+        assert body["has_frames"] is True
+        assert body["stalled"] is False
 
     # ========================================================================
     # Plate Detection Endpoints

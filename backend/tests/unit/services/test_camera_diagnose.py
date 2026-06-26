@@ -223,6 +223,73 @@ class TestFirstFrameStage:
         assert all(s.status == "ok" for s in result.stages)
 
 
+class TestFlashForgeCameraDiagnose:
+    """FlashForge cameras use the local MJPEG endpoint, not Bambu RTSP/chamber capture."""
+
+    @pytest.mark.asyncio
+    async def test_flashforge_success_uses_mjpeg_reader(self):
+        async def _tcp_ok(*_a, **_kw):
+            writer = AsyncMock()
+            return AsyncMock(), writer
+
+        with (
+            patch("backend.app.services.camera_diagnose.asyncio.open_connection", new=_tcp_ok) as _open,
+            patch(
+                "backend.app.services.camera_diagnose.read_flashforge_mjpeg_frame",
+                new_callable=AsyncMock,
+                return_value=b"\xff\xd8\xff\xe0frame",
+            ) as flashforge_frame,
+            patch(
+                "backend.app.services.camera_diagnose.capture_camera_frame_bytes",
+                new_callable=AsyncMock,
+            ) as bambu_capture,
+        ):
+            result = await diagnose_camera(
+                ip_address="192.0.2.211",
+                access_code="code",
+                model="FlashForge Creator 5 Pro",
+                printer_id=5,
+            )
+
+        assert result.overall_status == "ok"
+        assert result.summary_code == "all_ok"
+        assert result.protocol == "flashforge_mjpeg"
+        assert result.port == 8080
+        assert result.profile == "default"
+        assert [stage.name for stage in result.stages] == ["tcp_reachable", "first_frame"]
+        assert all(stage.status == "ok" for stage in result.stages)
+        flashforge_frame.assert_awaited_once_with(ip_address="192.0.2.211", timeout=15)
+        bambu_capture.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_flashforge_no_frame_maps_to_no_frame(self):
+        async def _tcp_ok(*_a, **_kw):
+            writer = AsyncMock()
+            return AsyncMock(), writer
+
+        with (
+            patch("backend.app.services.camera_diagnose.asyncio.open_connection", new=_tcp_ok),
+            patch(
+                "backend.app.services.camera_diagnose.read_flashforge_mjpeg_frame",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            result = await diagnose_camera(
+                ip_address="192.0.2.211",
+                access_code="code",
+                model="Creator5Pro",
+                printer_id=5,
+            )
+
+        assert result.overall_status == "failed"
+        assert result.summary_code == "no_frame"
+        assert result.protocol == "flashforge_mjpeg"
+        assert result.port == 8080
+        assert result.stages[1].name == "first_frame"
+        assert result.stages[1].code == "no_frame"
+
+
 class TestResultMetadata:
     """Surface fields the support triage relies on — protocol, port,
     profile name. The frontend renders these so we can ask the user

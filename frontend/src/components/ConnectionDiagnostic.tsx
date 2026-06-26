@@ -17,6 +17,31 @@ import {
   type PrinterDiagnosticResult,
 } from '../api/client';
 
+const CHECK_FALLBACKS: Partial<Record<DiagnosticCheck['id'], { title: string } & Partial<Record<DiagnosticStatus, string>>>> = {
+  port_flashforge_api: {
+    title: 'FlashForge local API (8898)',
+    pass: 'Reachable — Bambuddy can talk to the printer over the FlashForge LAN API.',
+    fail: 'Port 8898 is unreachable. The printer is powered off, on a different IP address, or a firewall is blocking the FlashForge LAN API.',
+  },
+  port_flashforge_camera: {
+    title: 'FlashForge camera (MJPEG 8080)',
+    pass: 'Reachable — the camera stream should work.',
+    warn: 'Port 8080 is unreachable. Monitoring and printing may still work, but the live camera view will not.',
+  },
+  flashforge_auth: {
+    title: 'FlashForge device key',
+    pass: 'The printer accepted the saved serial number and device key.',
+    fail: 'The printer is reachable but rejected the saved credentials. Re-copy the device key from the printer LAN page and update this printer in Bambuddy.',
+    skip: 'Not checked — the FlashForge local API could not be reached.',
+  },
+  flashforge_polling: {
+    title: 'Bambuddy polling connection',
+    pass: 'Bambuddy is receiving printer status from the FlashForge local API.',
+    fail: 'Bambuddy is not receiving printer status right now. Check the saved IP address, serial number, and device key, then restart the printer monitor if needed.',
+    skip: 'Not checked — this printer monitor is not running yet.',
+  },
+};
+
 function StatusIcon({ status }: { status: DiagnosticStatus }) {
   if (status === 'pass') return <CheckCircle2 className="w-5 h-5 text-bambu-green flex-shrink-0" />;
   if (status === 'fail') return <XCircle className="w-5 h-5 text-red-400 flex-shrink-0" />;
@@ -40,9 +65,10 @@ export function DiagnosticChecklist({ result }: { result: PrinterDiagnosticResul
         : 'bg-red-500/10 border-red-500/30 text-red-300';
 
   const renderCheck = (check: DiagnosticCheck) => {
+    const fallback = CHECK_FALLBACKS[check.id];
     const detail = t(`diagnostic.check.${check.id}.${check.status}`, {
       ...check.params,
-      defaultValue: '',
+      defaultValue: fallback?.[check.status] ?? '',
     });
     return (
       <li
@@ -55,7 +81,9 @@ export function DiagnosticChecklist({ result }: { result: PrinterDiagnosticResul
           <StatusIcon status={check.status} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm text-white">{t(`diagnostic.check.${check.id}.title`)}</div>
+          <div className="text-sm text-white">
+            {t(`diagnostic.check.${check.id}.title`, { defaultValue: fallback?.title ?? check.id })}
+          </div>
           {detail && <div className="text-xs text-bambu-gray mt-0.5">{detail}</div>}
         </div>
       </li>

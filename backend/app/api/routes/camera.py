@@ -28,6 +28,7 @@ from backend.app.services.camera import (
     get_camera_port,
     get_ffmpeg_path,
     is_chamber_image_model,
+    read_flashforge_mjpeg_frame,
     read_next_chamber_frame,
     rtsp_socket_timeout_flag,
     test_camera_connection,
@@ -80,6 +81,29 @@ def get_buffered_frame(printer_id: int) -> bytes | None:
     Returns the JPEG frame data if available, or None if no active stream.
     """
     return _last_frames.get(printer_id)
+
+
+def _format_mjpeg_frame(frame: bytes) -> bytes:
+    return (
+        b"--frame\r\n"
+        b"Content-Type: image/jpeg\r\n"
+        b"Content-Length: " + str(len(frame)).encode() + b"\r\n"
+        b"\r\n" + frame + b"\r\n"
+    )
+
+
+async def _generate_flashforge_polling_stream(printer_id: int, ip_address: str, fps: int) -> AsyncGenerator[bytes, None]:
+    """Generate a browser-friendly MJPEG stream from FlashForge's flaky stream endpoint."""
+    import time
+
+    frame_interval = 1.0 / max(fps, 1)
+    while True:
+        frame = await read_flashforge_mjpeg_frame(ip_address, timeout=8.0)
+        if frame:
+            _last_frames[printer_id] = frame
+            _last_frame_times[printer_id] = time.time()
+            yield _format_mjpeg_frame(frame)
+        await asyncio.sleep(frame_interval)
 
 
 def is_stream_active(printer_id: int) -> bool:
@@ -633,17 +657,13 @@ async def camera_stream(
     if is_flashforge_model(printer.model):
         import time
 
-        from backend.app.services.external_camera import generate_mjpeg_stream
-
-        fps = min(max(fps, 1), 15)
-        stream_url = f"http://{printer.ip_address}:8080/?action=stream"
+        fps = min(max(fps, 1), 2)
         _stream_start_times[printer_id] = time.time()
         _active_external_streams.add(printer_id)
 
         async def flashforge_stream_wrapper():
             try:
-                async for frame in generate_mjpeg_stream(stream_url, "mjpeg", fps):
-                    _last_frame_times[printer_id] = time.time()
+                async for frame in _generate_flashforge_polling_stream(printer_id, printer.ip_address, fps):
                     yield frame
             finally:
                 _active_external_streams.discard(printer_id)
@@ -888,10 +908,7 @@ async def camera_snapshot(
     printer = await get_printer_or_404(printer_id, db)
 
     if is_flashforge_model(printer.model):
-        from backend.app.services.external_camera import capture_frame
-
-        stream_url = f"http://{printer.ip_address}:8080/?action=stream"
-        frame_data = await capture_frame(stream_url, "mjpeg", timeout=15)
+        frame_data = await read_flashforge_mjpeg_frame(printer.ip_address, timeout=15.0)
         if not frame_data:
             raise HTTPException(
                 status_code=503,

@@ -1256,6 +1256,12 @@ class TestSupportsChamberTemp:
         """Verify P2 series printers support chamber temp."""
         assert supports_chamber_temp("P2S") is True
 
+    def test_flashforge_creator_5_pro_supported(self):
+        """Verify confirmed FlashForge models keep their real chamber sensor."""
+        assert supports_chamber_temp("Creator 5 Pro") is True
+        assert supports_chamber_temp("Creator5Pro") is True
+        assert supports_chamber_temp("FlashForge Creator 5 Pro") is True
+
     def test_h2_series_supported(self):
         """Verify H2 series printers support chamber temp."""
         assert supports_chamber_temp("H2C") is True
@@ -1388,6 +1394,11 @@ class TestSupportsDrying:
     def test_unsupported_models(self):
         """Verify models without AMS drying support return False regardless of firmware."""
         for model in ["A1", "A1MINI", "A1-MINI", "N1", "N2S"]:
+            assert supports_drying(model, "99.99.99.99") is False, f"Expected False for {model}"
+
+    def test_flashforge_models_do_not_report_ams_drying_support(self):
+        """FlashForge support has its own material station path, not Bambu AMS drying."""
+        for model in ["Creator 5 Pro", "FlashForge Creator 5 Pro", "FlashForge Adventurer 5M"]:
             assert supports_drying(model, "99.99.99.99") is False, f"Expected False for {model}"
 
     def test_unknown_models_allowed(self):

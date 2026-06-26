@@ -2501,6 +2501,8 @@ export default {
     noFiles: 'このディレクトリにファイルがありません',
     loadingFiles: 'ファイルを読み込み中...',
     failedToLoad: 'ファイルの読み込みに失敗しました',
+    sizeUnavailable: "サイズを取得できません",
+    limitedCapabilities: "このプリンターはLAN経由で読み取り専用のファイル一覧のみを公開しています。ダウンロード、削除、プレビューは利用できません。",
     toast: {
       filesDeleted: '{{count}}件のファイルを削除しました',
       deleteFailed: '削除に失敗: {{error}}',
@@ -5671,6 +5673,16 @@ export default {
         pass: '到達可能 — カメラストリームは機能します。',
         warn: 'ポート322に到達できません。ライブカメラ表示は機能しません。これは印刷には影響しません。',
       },
+      port_flashforge_api: {
+        title: "FlashForge ローカルAPI (8898)",
+        pass: "到達可能 — Bambuddy は FlashForge LAN API 経由でプリンターと通信できます。",
+        fail: "ポート8898に到達できません。プリンターの電源が切れている、IPアドレスが異なる、またはファイアウォールが FlashForge LAN API をブロックしています。",
+      },
+      port_flashforge_camera: {
+        title: "FlashForge カメラ (MJPEG 8080)",
+        pass: "到達可能 — カメラストリームは動作するはずです。",
+        warn: "ポート8080に到達できません。監視と印刷は動作する場合がありますが、ライブカメラ表示は利用できません。",
+      },
       network_mode: {
         title: 'Dockerネットワークモード',
         pass: 'ホストネットワークモードで実行中です。',
@@ -5694,6 +5706,18 @@ export default {
         pass: '開発者モードは有効です。',
         fail: 'プリンターの開発者モードがオフです。プリンターのLAN設定で有効にし、OKで確定してください。これがないと印刷は開始されません。',
         skip: '確認できませんでした — プリンターへのアクティブな接続が必要です。',
+      },
+      flashforge_auth: {
+        title: "FlashForge デバイスキー",
+        pass: "プリンターは保存済みのシリアル番号とデバイスキーを受け入れました。",
+        fail: "プリンターには到達できますが、保存済みの認証情報が拒否されました。プリンターのLANページからデバイスキーを再度コピーし、Bambuddyでこのプリンターを更新してください。",
+        skip: "未確認 — FlashForge ローカルAPIに到達できませんでした。",
+      },
+      flashforge_polling: {
+        title: "Bambuddy ポーリング接続",
+        pass: "Bambuddy は FlashForge ローカルAPIからプリンター状態を受信しています。",
+        fail: "Bambuddy は現在プリンター状態を受信していません。保存済みのIPアドレス、シリアル番号、デバイスキーを確認し、必要に応じてプリンターモニターを再起動してください。",
+        skip: "未確認 — このプリンターモニターはまだ実行されていません。",
       },
       printer_publishing: {
         title: 'プリンターがステータスを送信中',

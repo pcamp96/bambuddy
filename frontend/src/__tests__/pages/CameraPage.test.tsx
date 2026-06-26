@@ -136,6 +136,31 @@ describe('CameraPage', () => {
       });
       expect(screen.getByTitle('Diagnose')).toBeInTheDocument();
     });
+
+    it('hides unsupported Bambu-only controls when capabilities say they are unavailable', async () => {
+      server.use(
+        http.get('/api/v1/printers/:id/status', () => {
+          return HttpResponse.json({
+            connected: true,
+            state: 'RUNNING',
+            printable_objects_count: 2,
+            capabilities: {
+              can_chamber_light: false,
+              can_skip_objects: false,
+            },
+          });
+        })
+      );
+
+      renderCameraPage(1);
+
+      await waitFor(() => {
+        expect(screen.getByText('X1 Carbon')).toBeInTheDocument();
+      });
+      expect(screen.queryByTitle('Chamber Light')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('Skip objects')).not.toBeInTheDocument();
+      expect(screen.getByTitle('Diagnose')).toBeInTheDocument();
+    });
   });
 
   describe('stream token handling (#979)', () => {

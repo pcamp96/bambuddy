@@ -1,9 +1,9 @@
-"""Connection diagnostic for Bambu printers.
+"""Connection diagnostic for local-network printers.
 
 Runs the checks a maintainer performs by hand when triaging a
-"printer won't connect / won't print" report — port reachability, LAN
-developer mode, Docker network mode, subnet match, and MQTT credentials —
-so users can self-diagnose setup problems instead of opening an issue.
+"printer won't connect / won't print" report — port reachability,
+LAN mode, Docker network mode, subnet match, and credentials — so users
+can self-diagnose setup problems instead of opening an issue.
 
 See the 2026-05-21 issue-triage analysis: ~1/3 of closed issues were
 user-side setup errors clustered on exactly these causes.
@@ -17,6 +17,11 @@ import socket
 from backend.app.models.printer import Printer
 from backend.app.schemas.printer import DiagnosticCheck, PrinterDiagnosticResult
 from backend.app.services.discovery import is_running_in_docker
+from backend.app.services.flashforge_local import (
+    DEFAULT_FLASHFORGE_PORT,
+    is_flashforge_model,
+    probe_flashforge_connection,
+)
 from backend.app.services.printer_manager import printer_manager
 from backend.app.utils.printer_models import has_external_storage
 
@@ -26,6 +31,7 @@ logger = logging.getLogger(__name__)
 PORT_MQTT = 8883  # MQTT over TLS — control + status. Connection-critical.
 PORT_FTPS = 990  # FTPS — file upload; required to send prints.
 PORT_RTSPS = 322  # RTSPS — camera stream; optional.
+PORT_FLASHFORGE_CAMERA = 8080  # MJPEG snapshot/stream; optional.
 
 _PORT_PROBE_TIMEOUT = 3.0
 
@@ -98,6 +104,94 @@ def _same_subnet(ip_a: str, ip_b: str) -> bool | None:
     return net_a == net_b
 
 
+def _append_environment_checks(checks: list[DiagnosticCheck], ip_address: str) -> str | None:
+    """Append Docker/subnet checks shared by all printer families."""
+    network_mode: str | None = None
+    if is_running_in_docker():
+        network_mode = _detect_docker_network_mode()
+        checks.append(
+            DiagnosticCheck(
+                id="network_mode",
+                status="pass" if network_mode == "host" else "warn",
+                params={"mode": network_mode},
+            )
+        )
+    else:
+        checks.append(DiagnosticCheck(id="network_mode", status="skip"))
+
+    if network_mode == "bridge":
+        checks.append(DiagnosticCheck(id="subnet", status="skip"))
+    else:
+        host_ip = _get_host_ip()
+        same = _same_subnet(ip_address, host_ip) if host_ip else None
+        if same is None:
+            checks.append(DiagnosticCheck(id="subnet", status="skip"))
+        else:
+            checks.append(
+                DiagnosticCheck(
+                    id="subnet",
+                    status="pass" if same else "warn",
+                    params={"printer_ip": ip_address, "host_ip": host_ip},
+                )
+            )
+    return network_mode
+
+
+async def _run_flashforge_diagnostic(ip_address: str, printer: Printer) -> PrinterDiagnosticResult:
+    """Run FlashForge-specific connection checks for a saved printer."""
+    checks: list[DiagnosticCheck] = []
+
+    api_ok, camera_ok = await asyncio.gather(
+        _check_port(ip_address, DEFAULT_FLASHFORGE_PORT),
+        _check_port(ip_address, PORT_FLASHFORGE_CAMERA),
+    )
+    checks.append(DiagnosticCheck(id="port_flashforge_api", status="pass" if api_ok else "fail"))
+    checks.append(DiagnosticCheck(id="port_flashforge_camera", status="pass" if camera_ok else "warn"))
+
+    _append_environment_checks(checks, ip_address)
+
+    serial_number = getattr(printer, "serial_number", None)
+    access_code = getattr(printer, "access_code", None)
+    if not api_ok:
+        checks.append(DiagnosticCheck(id="flashforge_auth", status="skip"))
+    elif serial_number and access_code:
+        try:
+            result = await probe_flashforge_connection(
+                ip_address,
+                serial_number,
+                access_code,
+            )
+            checks.append(DiagnosticCheck(id="flashforge_auth", status="pass" if result.get("success") else "fail"))
+        except Exception:
+            logger.debug("FlashForge probe failed during diagnostic", exc_info=True)
+            checks.append(DiagnosticCheck(id="flashforge_auth", status="fail"))
+    else:
+        checks.append(DiagnosticCheck(id="flashforge_auth", status="fail"))
+
+    state = printer_manager.get_status(printer.id)
+    if state is None:
+        checks.append(DiagnosticCheck(id="flashforge_polling", status="skip"))
+    elif getattr(state, "connected", False):
+        checks.append(DiagnosticCheck(id="flashforge_polling", status="pass"))
+    else:
+        checks.append(DiagnosticCheck(id="flashforge_polling", status="fail"))
+
+    statuses = {c.status for c in checks}
+    if "fail" in statuses:
+        overall = "problems"
+    elif "warn" in statuses:
+        overall = "warnings"
+    else:
+        overall = "ok"
+
+    return PrinterDiagnosticResult(
+        printer_id=printer.id,
+        ip_address=ip_address,
+        overall=overall,
+        checks=checks,
+    )
+
+
 async def run_connection_diagnostic(
     ip_address: str,
     *,
@@ -115,6 +209,9 @@ async def run_connection_diagnostic(
     pass / fail / warn / skip; the frontend renders the human-readable
     title and fix text (localized) keyed on that id + status.
     """
+    if printer is not None and is_flashforge_model(getattr(printer, "model", None)):
+        return await _run_flashforge_diagnostic(ip_address, printer)
+
     checks: list[DiagnosticCheck] = []
 
     # --- Port reachability (probed in parallel) ---
@@ -128,38 +225,7 @@ async def run_connection_diagnostic(
     checks.append(DiagnosticCheck(id="port_ftps", status="pass" if ftps_ok else "warn"))
     checks.append(DiagnosticCheck(id="port_rtsps", status="pass" if rtsps_ok else "warn"))
 
-    # --- Docker network mode ---
-    network_mode: str | None = None
-    if is_running_in_docker():
-        network_mode = _detect_docker_network_mode()
-        checks.append(
-            DiagnosticCheck(
-                id="network_mode",
-                status="pass" if network_mode == "host" else "warn",
-                params={"mode": network_mode},
-            )
-        )
-    else:
-        checks.append(DiagnosticCheck(id="network_mode", status="skip"))
-
-    # --- Subnet match ---
-    # Skipped in bridge mode: the container IP is the bridge IP, not the host's,
-    # so the comparison is meaningless and the network_mode check already covers it.
-    if network_mode == "bridge":
-        checks.append(DiagnosticCheck(id="subnet", status="skip"))
-    else:
-        host_ip = _get_host_ip()
-        same = _same_subnet(ip_address, host_ip) if host_ip else None
-        if same is None:
-            checks.append(DiagnosticCheck(id="subnet", status="skip"))
-        else:
-            checks.append(
-                DiagnosticCheck(
-                    id="subnet",
-                    status="pass" if same else "warn",
-                    params={"printer_ip": ip_address, "host_ip": host_ip},
-                )
-            )
+    _append_environment_checks(checks, ip_address)
 
     # --- External storage (printer-side "Store sent files on external storage") ---
     # Install step 4. The setting has two variants depending on

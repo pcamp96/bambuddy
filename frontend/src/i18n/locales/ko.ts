@@ -2348,6 +2348,8 @@ export default {
     noFiles: '프린터에 파일 없음',
     loadingFiles: '파일 로딩 중...',
     failedToLoad: '파일 로드 실패',
+    sizeUnavailable: "크기를 사용할 수 없음",
+    limitedCapabilities: "이 프린터는 LAN에서 읽기 전용 파일 목록만 제공합니다. 다운로드, 삭제, 미리보기 작업은 사용할 수 없습니다.",
     toast: {
       filesDeleted: '{{count}}개 파일이 삭제되었습니다',
       deleteFailed: '삭제 실패: {{error}}'
@@ -5720,6 +5722,16 @@ export default {
         pass: '연결 가능 — 카메라 스트림이 작동합니다.',
         warn: '포트 322에 연결할 수 없습니다. 라이브 카메라 보기가 작동하지 않습니다. 인쇄에는 영향을 주지 않습니다.'
       },
+      port_flashforge_api: {
+        title: "FlashForge 로컬 API (8898)",
+        pass: "연결 가능 — Bambuddy가 FlashForge LAN API를 통해 프린터와 통신할 수 있습니다.",
+        fail: "포트 8898에 연결할 수 없습니다. 프린터가 꺼져 있거나 IP 주소가 다르거나 방화벽이 FlashForge LAN API를 차단하고 있습니다.",
+      },
+      port_flashforge_camera: {
+        title: "FlashForge 카메라 (MJPEG 8080)",
+        pass: "연결 가능 — 카메라 스트림이 작동해야 합니다.",
+        warn: "포트 8080에 연결할 수 없습니다. 모니터링과 인쇄는 계속 작동할 수 있지만 라이브 카메라 보기는 작동하지 않습니다.",
+      },
       network_mode: {
         title: 'Docker 네트워크 모드',
         pass: '호스트 네트워크 모드로 실행 중입니다.',
@@ -5743,6 +5755,18 @@ export default {
         pass: '개발자 모드가 활성화되어 있습니다.',
         fail: '프린터에서 개발자 모드가 꺼져 있습니다. 프린터의 LAN 설정에서 활성화하고 확인을 누르세요. 이 없으면 인쇄가 시작되지 않습니다.',
         skip: '확인할 수 없음 — 프린터에 연결되어 있어야 합니다.'
+      },
+      flashforge_auth: {
+        title: "FlashForge 장치 키",
+        pass: "프린터가 저장된 일련번호와 장치 키를 수락했습니다.",
+        fail: "프린터에는 연결되지만 저장된 자격 증명을 거부했습니다. 프린터 LAN 페이지에서 장치 키를 다시 복사하고 Bambuddy에서 이 프린터를 업데이트하세요.",
+        skip: "확인하지 않음 — FlashForge 로컬 API에 연결할 수 없습니다.",
+      },
+      flashforge_polling: {
+        title: "Bambuddy 폴링 연결",
+        pass: "Bambuddy가 FlashForge 로컬 API에서 프린터 상태를 수신하고 있습니다.",
+        fail: "Bambuddy가 현재 프린터 상태를 수신하지 못하고 있습니다. 저장된 IP 주소, 일련번호, 장치 키를 확인한 다음 필요하면 프린터 모니터를 다시 시작하세요.",
+        skip: "확인하지 않음 — 이 프린터 모니터가 아직 실행 중이 아닙니다.",
       },
       printer_publishing: {
         title: '프린터가 상태를 게시 중',

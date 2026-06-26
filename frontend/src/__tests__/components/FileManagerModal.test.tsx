@@ -250,6 +250,55 @@ describe('FileManagerModal', () => {
         expect(screen.getByText('Select All')).toBeInTheDocument();
       });
     });
+
+    it('renders FlashForge-style read-only printer files without bulk actions', async () => {
+      server.use(
+        http.get('/api/v1/printers/:id/files', () => {
+          return HttpResponse.json({
+            files: [
+              {
+                name: 'cube.gcode.3mf',
+                path: '/cube.gcode.3mf',
+                size: 0,
+                is_directory: false,
+                mtime: null,
+                printing_time: 7200,
+                filament_weight: 15.2,
+                thumbnail_url: '/api/v1/printers/2/files/thumbnail?path=/cube.gcode.3mf',
+              },
+            ],
+            capabilities: {
+              can_download: false,
+              can_delete: false,
+              can_preview: false,
+              can_browse_directories: false,
+              unsupported_reason: 'FlashForge local API exposes file listing only.',
+            },
+          });
+        })
+      );
+
+      render(
+        <FileManagerModal
+          printerId={2}
+          printerName="Creator 5 Pro"
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('cube.gcode.3mf')).toBeInTheDocument();
+      });
+
+      expect(document.querySelector('img[src*="/files/thumbnail"]')).toBeInTheDocument();
+      expect(screen.getByText('2h · 15.2g')).toBeInTheDocument();
+      expect(screen.getByText('Size unavailable')).toBeInTheDocument();
+      expect(screen.queryByText('0 B')).not.toBeInTheDocument();
+      expect(screen.getByText('FlashForge local API exposes file listing only.')).toBeInTheDocument();
+      expect(screen.queryByText('Select All')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Download/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Delete/i })).toBeDisabled();
+    });
   });
 
   describe('search and filter', () => {

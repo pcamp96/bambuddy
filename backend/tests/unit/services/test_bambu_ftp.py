@@ -15,11 +15,13 @@ Tests against a real mock implicit FTPS server, covering:
 
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from backend.app.services.bambu_ftp import (
     BambuFTPClient,
+    DeleteResult,
     FileNotOnPrinterError,
     cache_3mf_download,
     clear_3mf_cache,
@@ -27,6 +29,7 @@ from backend.app.services.bambu_ftp import (
     download_file_async,
     download_file_try_paths_async,
     get_cached_3mf,
+    get_storage_info_async,
     list_files_async,
     normalize_3mf_name,
     upload_file_async,
@@ -812,6 +815,133 @@ class TestAsyncWrappers:
             printer_model="A1",
         )
         assert result is True
+
+    @pytest.mark.asyncio
+    async def test_upload_file_async_routes_flashforge_to_http_uploader(self, tmp_path, monkeypatch):
+        content = b"flashforge upload"
+        local = tmp_path / "ff.3mf"
+        local.write_bytes(content)
+        seen = {}
+
+        def fake_upload(ip_address, serial_number, access_code, local_path, remote_path, **kwargs):
+            seen.update(
+                {
+                    "ip_address": ip_address,
+                    "serial_number": serial_number,
+                    "access_code": access_code,
+                    "local_path": local_path,
+                    "remote_path": remote_path,
+                    "kwargs": kwargs,
+                }
+            )
+            return True
+
+        monkeypatch.setattr("backend.app.services.flashforge_local.upload_flashforge_file", fake_upload)
+
+        result = await upload_file_async(
+            "192.0.2.211",
+            "ff-test-key",
+            local,
+            "/cache/ff.3mf",
+            timeout=30.0,
+            printer_model="FlashForge Creator 5 Pro",
+            serial_number="FF-TEST-SERIAL",
+        )
+
+        assert result is True
+        assert seen["ip_address"] == "192.0.2.211"
+        assert seen["serial_number"] == "FF-TEST-SERIAL"
+        assert seen["access_code"] == "ff-test-key"
+        assert seen["local_path"] == local
+        assert seen["remote_path"] == "/cache/ff.3mf"
+
+    @pytest.mark.asyncio
+    async def test_delete_file_async_reports_flashforge_unsupported(self):
+        result = await delete_file_async(
+            "192.0.2.211",
+            "ff-test-key",
+            "/cache/ff.3mf",
+            printer_model="FlashForge Creator 5 Pro",
+        )
+
+        assert result is DeleteResult.FAILED
+
+    @pytest.mark.asyncio
+    async def test_list_files_async_routes_flashforge_to_http_api(self, monkeypatch):
+        seen = {}
+
+        def fake_list(ip_address, serial_number, access_code, path):
+            seen.update(
+                {
+                    "ip_address": ip_address,
+                    "serial_number": serial_number,
+                    "access_code": access_code,
+                    "path": path,
+                }
+            )
+            return [{"name": "cube.gcode.3mf", "is_directory": False, "size": 0, "mtime": None}]
+
+        monkeypatch.setattr("backend.app.services.flashforge_local.list_flashforge_files", fake_list)
+
+        result = await list_files_async(
+            "192.0.2.211",
+            "ff-test-key",
+            "/",
+            printer_model="FlashForge Creator 5 Pro",
+            serial_number="FF-TEST-SERIAL",
+        )
+
+        assert result == [{"name": "cube.gcode.3mf", "is_directory": False, "size": 0, "mtime": None}]
+        assert seen == {
+            "ip_address": "192.0.2.211",
+            "serial_number": "FF-TEST-SERIAL",
+            "access_code": "ff-test-key",
+            "path": "/",
+        }
+
+    @pytest.mark.asyncio
+    async def test_storage_info_async_routes_flashforge_to_http_api(self, monkeypatch):
+        def fake_storage(ip_address, serial_number, access_code):
+            return {"used_bytes": None, "free_bytes": 1234}
+
+        monkeypatch.setattr("backend.app.services.flashforge_local.get_flashforge_storage_info", fake_storage)
+
+        result = await get_storage_info_async(
+            "192.0.2.211",
+            "ff-test-key",
+            printer_model="FlashForge Creator 5 Pro",
+            serial_number="FF-TEST-SERIAL",
+        )
+
+        assert result == {"used_bytes": None, "free_bytes": 1234}
+
+    @pytest.mark.asyncio
+    async def test_download_file_async_skips_flashforge_ftp(self, tmp_path):
+        with patch.object(BambuFTPClient, "connect") as connect:
+            result = await download_file_async(
+                "192.0.2.211",
+                "ff-test-key",
+                "/cube.gcode.3mf",
+                tmp_path / "cube.gcode.3mf",
+                printer_model="FlashForge Creator 5 Pro",
+            )
+
+        assert result is False
+        connect.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_download_file_try_paths_async_skips_flashforge_ftp(self, tmp_path):
+        with patch.object(BambuFTPClient, "connect") as connect:
+            result = await download_file_try_paths_async(
+                "192.0.2.211",
+                "ff-test-key",
+                ["/cube.gcode.3mf", "/cache/cube.gcode.3mf"],
+                tmp_path / "cube.gcode.3mf",
+                printer_model="FlashForge Creator 5 Pro",
+            )
+
+        assert result is False
+        connect.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_download_file_async_success(self, patch_ftp_port, tmp_path):

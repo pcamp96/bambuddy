@@ -87,6 +87,8 @@ def supports_chamber_temp(model: str | None) -> bool:
     """
     if not model:
         return False
+    if is_flashforge_model(model):
+        return True
     # Normalize model name (uppercase, strip whitespace)
     model_upper = model.strip().upper()
     return model_upper in CHAMBER_TEMP_SUPPORTED_MODELS
@@ -164,6 +166,8 @@ def supports_drying(model: str | None, firmware: str | None) -> bool:
     the command fails gracefully with result: "fail" if unsupported.
     """
     if not model:
+        return False
+    if "FLASHFORGE" in model.strip().upper() or is_flashforge_model(model):
         return False
     model_upper = model.strip().upper()
     if model_upper in _DRYING_UNSUPPORTED_MODELS:
@@ -852,7 +856,6 @@ def printer_state_to_dict(state: PrinterState, printer_id: int | None = None, mo
     ams_units = []
     vt_tray = []
     raw_data = state.raw_data or {}
-    is_flashforge = raw_data.get("vendor") == "flashforge"
 
     # Build K-profile lookup map: cali_idx -> k_value
     kprofile_map: dict[int, float] = {}
@@ -1020,7 +1023,7 @@ def printer_state_to_dict(state: PrinterState, printer_id: int | None = None, mo
         "total_layers": state.total_layers,
         "temperatures": temperatures,
         "hms_errors": [
-            {"code": e.code, "attr": e.attr, "module": e.module, "severity": e.severity}
+            {"code": e.code, "attr": e.attr, "module": e.module, "severity": e.severity, "message": e.message}
             for e in (state.hms_errors or [])
         ],
         # AMS data for filament colors
@@ -1083,9 +1086,7 @@ def printer_state_to_dict(state: PrinterState, printer_id: int | None = None, mo
     }
     # Add cover URL if there's an active print and printer_id is provided
     # Include PAUSE state so skip objects modal can show cover
-    if is_flashforge:
-        result["cover_url"] = None
-    elif printer_id and state.state in ("RUNNING", "PAUSE") and state.gcode_file:
+    if printer_id and state.state in ("RUNNING", "PAUSE") and state.gcode_file:
         result["cover_url"] = f"/api/v1/printers/{printer_id}/cover"
     else:
         result["cover_url"] = None

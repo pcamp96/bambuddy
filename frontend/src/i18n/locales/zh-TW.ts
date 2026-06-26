@@ -2489,6 +2489,8 @@ export default {
     noFiles: '印表機上沒有檔案',
     loadingFiles: '載入檔案中...',
     failedToLoad: '載入檔案失敗',
+    sizeUnavailable: "大小無法使用",
+    limitedCapabilities: "此印表機透過 LAN 只提供唯讀檔案清單。下載、刪除和預覽操作無法使用。",
     toast: {
       filesDeleted: '已刪除 {{count}} 個檔案',
       deleteFailed: '刪除失敗：{{error}}',
@@ -5658,6 +5660,16 @@ export default {
         pass: '可達 — 攝影機串流將正常運作。',
         warn: '連接埠 322 無法連線。即時攝影機檢視將無法運作。這不影響列印。',
       },
+      port_flashforge_api: {
+        title: "FlashForge 本機 API（8898）",
+        pass: "可連線 — Bambuddy 可以透過 FlashForge LAN API 與印表機通訊。",
+        fail: "無法連線到連接埠 8898。印表機可能已關機、IP 位址不同，或防火牆封鎖了 FlashForge LAN API。",
+      },
+      port_flashforge_camera: {
+        title: "FlashForge 攝影機（MJPEG 8080）",
+        pass: "可連線 — 攝影機串流應可正常運作。",
+        warn: "無法連線到連接埠 8080。監控和列印可能仍可運作，但即時攝影機畫面無法使用。",
+      },
       network_mode: {
         title: 'Docker 網路模式',
         pass: '正在以 host 網路模式執行。',
@@ -5681,6 +5693,18 @@ export default {
         pass: '開發者模式已啟用。',
         fail: '印表機上的開發者模式已關閉。請在印表機的 LAN 設定中啟用它 — 並按 OK 確認。否則列印將無法開始。',
         skip: '無法檢查 — 需要與印表機的即時連線。',
+      },
+      flashforge_auth: {
+        title: "FlashForge 裝置金鑰",
+        pass: "印表機已接受儲存的序號和裝置金鑰。",
+        fail: "印表機可連線，但拒絕了儲存的認證。請從印表機 LAN 頁面重新複製裝置金鑰，並在 Bambuddy 中更新此印表機。",
+        skip: "未檢查 — 無法連線到 FlashForge 本機 API。",
+      },
+      flashforge_polling: {
+        title: "Bambuddy 輪詢連線",
+        pass: "Bambuddy 正在從 FlashForge 本機 API 接收印表機狀態。",
+        fail: "Bambuddy 目前未接收印表機狀態。請檢查儲存的 IP 位址、序號和裝置金鑰，必要時重新啟動印表機監視器。",
+        skip: "未檢查 — 此印表機監視器尚未執行。",
       },
       printer_publishing: {
         title: '印表機正在發佈狀態',

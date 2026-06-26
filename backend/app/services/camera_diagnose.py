@@ -15,15 +15,17 @@ Stages
 
 1. **tcp_reachable** — open a TCP socket to the camera port (322 for
    RTSPS models, 6000 for the chamber-image-protocol A1 / P1 family).
+   FlashForge LAN printers use their local MJPEG camera port (8080).
    Distinguishes "printer down" / "firewall" / "LAN-only off" from
    stream-content problems.
 2. **first_frame** — call the existing ``capture_camera_frame_bytes``
    pipeline (same code that powers /camera/snapshot) and verify at
    least one JPEG comes back within the model's profile-derived
-   timeout. Combines auth + protocol handshake + first keyframe into
-   one stage because splitting RTSP's ``ffmpeg`` invocation is heavy
-   and the user-facing answer is the same either way: "the camera
-   itself isn't producing frames".
+   timeout. FlashForge uses the local MJPEG reader for this stage.
+   Combines auth + protocol handshake + first keyframe into one stage
+   because splitting RTSP's ``ffmpeg`` invocation is heavy and the
+   user-facing answer is the same either way: "the camera itself isn't
+   producing frames".
 
 Shortcut
 --------
@@ -48,8 +50,10 @@ from backend.app.services.camera import (
     capture_camera_frame_bytes,
     get_camera_port,
     is_chamber_image_model,
+    read_flashforge_mjpeg_frame,
 )
 from backend.app.services.camera_profiles import DEFAULT_PROFILE, get_camera_profile
+from backend.app.services.flashforge_local import is_flashforge_model
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +81,7 @@ class CameraDiagnoseStage:
 @dataclass
 class CameraDiagnoseResult:
     printer_id: int
-    protocol: str  # "rtsp" | "chamber_image"
+    protocol: str  # "rtsp" | "chamber_image" | "flashforge_mjpeg"
     port: int
     # Whether this model's camera path uses the default profile or has
     # an override entry in ``camera_profiles._PROFILES``. Useful for
@@ -199,6 +203,33 @@ async def _check_first_frame(
     )
 
 
+async def _check_flashforge_first_frame(ip_address: str, timeout: int) -> CameraDiagnoseStage:
+    """Stage 2 for FlashForge — capture one frame from the local MJPEG endpoint."""
+    started = time.monotonic()
+    try:
+        jpeg = await read_flashforge_mjpeg_frame(ip_address=ip_address, timeout=timeout)
+    except Exception as exc:  # noqa: BLE001 — preserve Bambu diagnostic behavior
+        logger.warning("FlashForge camera diagnose first-frame capture raised: %s", exc)
+        return CameraDiagnoseStage(
+            name="first_frame",
+            status="failed",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            code="capture_exception",
+        )
+    if jpeg:
+        return CameraDiagnoseStage(
+            name="first_frame",
+            status="ok",
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
+    return CameraDiagnoseStage(
+        name="first_frame",
+        status="failed",
+        duration_ms=int((time.monotonic() - started) * 1000),
+        code="no_frame",
+    )
+
+
 def _summary_for_stages(stages: list[CameraDiagnoseStage]) -> str:
     """Pick the remediation key from the first failing stage's ``code``,
     or ``all_ok`` when every stage passed."""
@@ -237,9 +268,10 @@ async def diagnose_camera(
     a ``live_stream_active`` stage and ``all_ok`` summary — real-world
     proof of a working camera beats any synthetic test.
     """
-    is_chamber = is_chamber_image_model(model)
-    protocol = "chamber_image" if is_chamber else "rtsp"
-    port = get_camera_port(model)
+    is_flashforge = is_flashforge_model(model)
+    is_chamber = False if is_flashforge else is_chamber_image_model(model)
+    protocol = "flashforge_mjpeg" if is_flashforge else "chamber_image" if is_chamber else "rtsp"
+    port = 8080 if is_flashforge else get_camera_port(model)
 
     result = CameraDiagnoseResult(
         printer_id=printer_id,
@@ -274,13 +306,18 @@ async def diagnose_camera(
     result.stages.append(tcp_stage)
     if tcp_stage.status != "ok":
         result.overall_status = "failed"
-        # Skip first_frame — without TCP there's no point spawning ffmpeg.
+        # Skip first_frame — without TCP there's no point spawning ffmpeg
+        # or polling the FlashForge MJPEG endpoint.
         result.stages.append(CameraDiagnoseStage(name="first_frame", status="skipped", duration_ms=0))
         result.summary_code = _summary_for_stages(result.stages)
         return result
 
     # Stage 2
-    frame_stage = await _check_first_frame(ip_address, access_code, model, capture_timeout)
+    frame_stage = (
+        await _check_flashforge_first_frame(ip_address, capture_timeout)
+        if is_flashforge
+        else await _check_first_frame(ip_address, access_code, model, capture_timeout)
+    )
     result.stages.append(frame_stage)
     if frame_stage.status != "ok":
         result.overall_status = "failed"

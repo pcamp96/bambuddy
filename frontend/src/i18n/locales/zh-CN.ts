@@ -2489,6 +2489,8 @@ export default {
     noFiles: '打印机上没有文件',
     loadingFiles: '加载文件中...',
     failedToLoad: '加载文件失败',
+    sizeUnavailable: "大小不可用",
+    limitedCapabilities: "此打印机通过 LAN 仅提供只读文件列表。下载、删除和预览操作不可用。",
     toast: {
       filesDeleted: '已删除 {{count}} 个文件',
       deleteFailed: '删除失败：{{error}}',
@@ -5658,6 +5660,16 @@ export default {
         pass: '可达 — 摄像头视频流将正常工作。',
         warn: '端口 322 不可达。实时摄像头视图将无法工作。这不影响打印。',
       },
+      port_flashforge_api: {
+        title: "FlashForge 本地 API（8898）",
+        pass: "可达 — Bambuddy 可以通过 FlashForge LAN API 与打印机通信。",
+        fail: "端口 8898 不可达。打印机可能已关机、IP 地址不同，或防火墙阻止了 FlashForge LAN API。",
+      },
+      port_flashforge_camera: {
+        title: "FlashForge 摄像头（MJPEG 8080）",
+        pass: "可达 — 摄像头视频流应可正常工作。",
+        warn: "端口 8080 不可达。监控和打印可能仍可工作，但实时摄像头视图不可用。",
+      },
       network_mode: {
         title: 'Docker 网络模式',
         pass: '正在以 host 网络模式运行。',
@@ -5681,6 +5693,18 @@ export default {
         pass: '开发者模式已启用。',
         fail: '打印机上的开发者模式已关闭。请在打印机的 LAN 设置中启用它 — 并按 OK 确认。否则打印将无法开始。',
         skip: '无法检查 — 需要与打印机的实时连接。',
+      },
+      flashforge_auth: {
+        title: "FlashForge 设备密钥",
+        pass: "打印机已接受保存的序列号和设备密钥。",
+        fail: "打印机可达，但拒绝了保存的凭据。请从打印机 LAN 页面重新复制设备密钥，并在 Bambuddy 中更新此打印机。",
+        skip: "未检查 — 无法访问 FlashForge 本地 API。",
+      },
+      flashforge_polling: {
+        title: "Bambuddy 轮询连接",
+        pass: "Bambuddy 正在从 FlashForge 本地 API 接收打印机状态。",
+        fail: "Bambuddy 当前未接收打印机状态。请检查保存的 IP 地址、序列号和设备密钥，必要时重启打印机监视器。",
+        skip: "未检查 — 此打印机监视器尚未运行。",
       },
       printer_publishing: {
         title: '打印机正在发布状态',

@@ -786,14 +786,16 @@ function TemperatureIndicator({ temp, goodThreshold = 28, fairThreshold = 35, on
 }
 
 
-function getAmsLabel(amsId: number | string, trayCount: number): string {
+function getAmsLabel(amsId: number | string, trayCount: number, moduleType?: string | null): string {
   // Ensure amsId is a number (backend might send string)
   const id = typeof amsId === 'string' ? parseInt(amsId, 10) : amsId;
   const safeId = isNaN(id) ? 0 : id;
+  const isFlashForgeIfs = moduleType === 'flashforge_ifs';
   const isHt = trayCount === 1;
   // AMS-HT uses IDs starting at 128, regular AMS uses 0-3
   const normalizedId = safeId >= 128 ? safeId - 128 : safeId;
   const letter = String.fromCharCode(65 + normalizedId); // 0=A, 1=B, 2=C, 3=D
+  if (isFlashForgeIfs) return `IFS-${letter}`;
   return isHt ? `HT-${letter}` : `AMS-${letter}`;
 }
 
@@ -1578,12 +1580,36 @@ function PrinterCard({
   const [editingRoi, setEditingRoi] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [isSavingRoi, setIsSavingRoi] = useState(false);
   const [plateCheckLightWasOff, setPlateCheckLightWasOff] = useState(false);
+  const [tempControl, setTempControl] = useState<'nozzle' | 'bed' | 'chamber' | null>(null);
+  const [tempTarget, setTempTarget] = useState('');
 
   const { data: status } = useQuery({
     queryKey: ['printerStatus', printer.id],
     queryFn: () => api.getPrinterStatus(printer.id),
     refetchInterval: 30000, // Fallback polling, WebSocket handles real-time
   });
+  const capabilities = status?.capabilities ?? {
+    can_pause: true,
+    can_resume: true,
+    can_stop: true,
+    can_clear_errors: true,
+    can_chamber_light: true,
+    can_print_speed: true,
+    can_set_temperature: false,
+    can_airduct_mode: true,
+    can_bed_jog: true,
+    can_home_axes: true,
+    can_skip_objects: true,
+    can_dry_filament: true,
+    can_calibrate: true,
+    can_upload_files: true,
+    can_list_files: true,
+    can_download_files: true,
+    can_delete_files: true,
+    can_preview_files: true,
+    can_browse_files: true,
+    can_stream_camera: true,
+  };
 
   // Check for firmware updates (cached for 5 minutes, can be disabled in settings)
   const { data: firmwareInfo } = useQuery({
@@ -2010,6 +2036,34 @@ function PrinterCard({
         queryClient.setQueryData(['printerStatus', printer.id], context.previousStatus);
       }
       showToast(error.message || t('printers.toast.failedToSetSpeed'), 'error');
+    },
+  });
+
+  const temperatureMutation = useMutation({
+    mutationFn: ({ heater, target }: { heater: 'nozzle' | 'bed' | 'chamber'; target: number }) =>
+      api.setTemperature(printer.id, heater, target),
+    onMutate: async ({ heater, target }) => {
+      await queryClient.cancelQueries({ queryKey: ['printerStatus', printer.id] });
+      const previousStatus = queryClient.getQueryData(['printerStatus', printer.id]);
+      queryClient.setQueryData(['printerStatus', printer.id], (old: PrinterStatus | undefined) => {
+        if (!old) return old;
+        const temperatures: Record<string, number | boolean | undefined> = { ...(old.temperatures || {}) };
+        const current = Number(temperatures[heater] || 0);
+        temperatures[`${heater}_target` as keyof typeof temperatures] = target;
+        temperatures[`${heater}_heating` as keyof typeof temperatures] = target > current + 1;
+        return { ...old, temperatures };
+      });
+      return { previousStatus };
+    },
+    onSuccess: (_, { heater, target }) => {
+      setTempControl(null);
+      showToast(`${heater[0].toUpperCase()}${heater.slice(1)} target set to ${target}°C`);
+    },
+    onError: (error: Error, _, context) => {
+      if (context?.previousStatus) {
+        queryClient.setQueryData(['printerStatus', printer.id], context.previousStatus);
+      }
+      showToast(error.message || t('printers.toast.failedToSendCommand'), 'error');
     },
   });
 
@@ -2893,32 +2947,34 @@ function PrinterCard({
                 {/* Current Print or Idle Placeholder */}
                 <div className="mb-4 p-3 bg-bambu-dark rounded-lg relative">
                   {/* Skip Objects button - top right corner, always visible */}
-                  <button
-                    onClick={() => setShowSkipObjectsModal(true)}
-                    disabled={!(status.state === 'RUNNING' || status.state === 'PAUSE') || (status.printable_objects_count ?? 0) < 2 || !hasPermission('printers:control')}
-                    className={`absolute top-2 right-2 p-1.5 rounded transition-colors z-10 ${
-                      (status.state === 'RUNNING' || status.state === 'PAUSE') && (status.printable_objects_count ?? 0) >= 2 && hasPermission('printers:control')
-                        ? 'text-bambu-gray hover:text-white hover:bg-white/10'
-                        : 'text-bambu-gray/30 cursor-not-allowed'
-                    }`}
-                    title={
-                      !hasPermission('printers:control')
-                        ? t('printers.permission.noControl')
-                        : !(status.state === 'RUNNING' || status.state === 'PAUSE')
-                          ? t('printers.skipObjects.onlyWhilePrinting')
-                          : (status.printable_objects_count ?? 0) >= 2
-                            ? t('printers.skipObjects.tooltip')
-                            : t('printers.skipObjects.requiresMultiple')
-                    }
-                  >
-                    <SkipObjectsIcon className="w-4 h-4" />
-                    {/* Badge showing skipped count */}
-                    {objectsData && objectsData.skipped_count > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full">
-                        {objectsData.skipped_count}
-                      </span>
-                    )}
-                  </button>
+                  {capabilities.can_skip_objects && (
+                    <button
+                      onClick={() => setShowSkipObjectsModal(true)}
+                      disabled={!(status.state === 'RUNNING' || status.state === 'PAUSE') || (status.printable_objects_count ?? 0) < 2 || !hasPermission('printers:control')}
+                      className={`absolute top-2 right-2 p-1.5 rounded transition-colors z-10 ${
+                        (status.state === 'RUNNING' || status.state === 'PAUSE') && (status.printable_objects_count ?? 0) >= 2 && hasPermission('printers:control')
+                          ? 'text-bambu-gray hover:text-white hover:bg-white/10'
+                          : 'text-bambu-gray/30 cursor-not-allowed'
+                      }`}
+                      title={
+                        !hasPermission('printers:control')
+                          ? t('printers.permission.noControl')
+                          : !(status.state === 'RUNNING' || status.state === 'PAUSE')
+                            ? t('printers.skipObjects.onlyWhilePrinting')
+                            : (status.printable_objects_count ?? 0) >= 2
+                              ? t('printers.skipObjects.tooltip')
+                              : t('printers.skipObjects.requiresMultiple')
+                      }
+                    >
+                      <SkipObjectsIcon className="w-4 h-4" />
+                      {/* Badge showing skipped count */}
+                      {objectsData && objectsData.skipped_count > 0 && (
+                        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full">
+                          {objectsData.skipped_count}
+                        </span>
+                      )}
+                    </button>
+                  )}
                   <div className="flex gap-3">
                     {/* Cover Image */}
                     <CoverImage
@@ -3011,11 +3067,12 @@ function PrinterCard({
 
             {/* Temperatures */}
             {status.temperatures && viewMode === 'expanded' && (() => {
+              const temps = status.temperatures;
               // Use actual heater states from MQTT stream
-              const nozzleHeating = status.temperatures.nozzle_heating || status.temperatures.nozzle_2_heating || false;
-              const bedHeating = status.temperatures.bed_heating || false;
-              const chamberHeating = status.temperatures.chamber_heating || false;
-              const isDualNozzle = printer.nozzle_count === 2 || status.temperatures.nozzle_2 !== undefined;
+              const nozzleHeating = temps.nozzle_heating || temps.nozzle_2_heating || false;
+              const bedHeating = temps.bed_heating || false;
+              const chamberHeating = temps.chamber_heating || false;
+              const isDualNozzle = printer.nozzle_count === 2 || temps.nozzle_2 !== undefined;
               // active_extruder: 0=right, 1=left
               const activeNozzle = status.active_extruder === 1 ? 'L' : 'R';
               // Extended nozzle data from nozzle_rack (H2 series: wear, serial, max_temp, etc.)
@@ -3024,17 +3081,79 @@ function PrinterCard({
               const rightNozzleSlot = status.nozzle_rack?.find(s => s.id === 0);
               // Single-nozzle models (H2D, H2C): use the primary nozzle (id 0)
               const singleNozzleSlot = rightNozzleSlot || leftNozzleSlot;
+              const canSetTemperature = capabilities.can_set_temperature && hasPermission('printers:control');
+              const openTempControl = (heater: 'nozzle' | 'bed' | 'chamber', currentTarget?: number) => {
+                if (!canSetTemperature) return;
+                setTempControl(tempControl === heater ? null : heater);
+                setTempTarget(String(Math.round(currentTarget || 0)));
+              };
+              const submitTemperature = (heater: 'nozzle' | 'bed' | 'chamber', target: number) => {
+                temperatureMutation.mutate({ heater, target });
+              };
+              const renderTempPopover = (
+                heater: 'nozzle' | 'bed' | 'chamber',
+                label: string,
+                current?: number,
+                target?: number,
+              ) => tempControl === heater && canSetTemperature ? (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-30 w-44 rounded-lg border border-bambu-dark-tertiary bg-bambu-dark-secondary p-2 shadow-xl text-left">
+                  <div className="flex items-center justify-between text-[10px] text-bambu-gray mb-2">
+                    <span>{label}</span>
+                    <span>{Math.round(current || 0)}° / {Math.round(target || 0)}°</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max={heater === 'nozzle' ? 280 : heater === 'bed' ? 120 : 70}
+                      value={tempTarget}
+                      onChange={(event) => setTempTarget(event.target.value)}
+                      onClick={(event) => event.stopPropagation()}
+                      className="w-20 rounded bg-bambu-dark-tertiary px-2 py-1 text-xs text-white border border-bambu-dark-tertiary focus:outline-none focus:border-bambu-green"
+                      aria-label={`${label} target temperature`}
+                    />
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        submitTemperature(heater, Math.max(0, Number.parseInt(tempTarget || '0', 10) || 0));
+                      }}
+                      disabled={temperatureMutation.isPending}
+                      className="flex-1 rounded bg-bambu-green/20 px-2 py-1 text-xs text-bambu-green hover:bg-bambu-green/30 disabled:opacity-50"
+                    >
+                      Set
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      submitTemperature(heater, 0);
+                    }}
+                    disabled={temperatureMutation.isPending}
+                    className="mt-2 w-full rounded bg-bambu-dark px-2 py-1 text-xs text-bambu-gray hover:text-white disabled:opacity-50"
+                  >
+                    Off
+                  </button>
+                </div>
+              ) : null;
 
               return (
                 <div className="flex items-stretch gap-1.5 flex-wrap">
                   {/* Nozzle temp - combined for dual nozzle */}
-                  <div className="text-center px-2 py-1.5 bg-bambu-dark rounded-lg flex-1 flex flex-col justify-center items-center">
+                  <button
+                    type="button"
+                    onClick={() => openTempControl('nozzle', temps.nozzle_target)}
+                    disabled={!canSetTemperature}
+                    className={`relative text-center px-2 py-1.5 bg-bambu-dark rounded-lg flex-1 flex flex-col justify-center items-center ${canSetTemperature ? 'hover:bg-bambu-dark-tertiary transition-colors cursor-pointer' : 'cursor-default'}`}
+                    title={canSetTemperature ? 'Set nozzle temperature' : undefined}
+                  >
                     <HeaterThermometer className="w-3.5 h-3.5 mb-0.5" color="text-orange-400" isHeating={nozzleHeating} />
-                    {status.temperatures.nozzle_2 !== undefined ? (
+                    {temps.nozzle_2 !== undefined ? (
                       <>
                         <p className="text-[9px] text-bambu-gray">L / R</p>
                         <p className="text-[11px] text-white">
-                          {Math.round(status.temperatures.nozzle || 0)}° / {Math.round(status.temperatures.nozzle_2 || 0)}°
+                          {Math.round(temps.nozzle || 0)}° / {Math.round(temps.nozzle_2 || 0)}°
                         </p>
                       </>
                     ) : singleNozzleSlot ? (
@@ -3042,7 +3161,7 @@ function PrinterCard({
                         <div className="cursor-default">
                           <p className="text-[9px] text-bambu-gray">{t('printers.temperatures.nozzle')}</p>
                           <p className="text-[11px] text-white">
-                            {Math.round(status.temperatures.nozzle || 0)}°C
+                            {Math.round(temps.nozzle || 0)}°C
                           </p>
                         </div>
                       </NozzleSlotHoverCard>
@@ -3050,26 +3169,41 @@ function PrinterCard({
                       <>
                         <p className="text-[9px] text-bambu-gray">{t('printers.temperatures.nozzle')}</p>
                         <p className="text-[11px] text-white">
-                          {Math.round(status.temperatures.nozzle || 0)}°C
+                          {Math.round(temps.nozzle || 0)}°C
                         </p>
                       </>
                     )}
-                  </div>
-                  <div className="text-center px-2 py-1.5 bg-bambu-dark rounded-lg flex-1 flex flex-col justify-center items-center">
+                    {renderTempPopover('nozzle', t('printers.temperatures.nozzle'), temps.nozzle, temps.nozzle_target)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openTempControl('bed', temps.bed_target)}
+                    disabled={!canSetTemperature}
+                    className={`relative text-center px-2 py-1.5 bg-bambu-dark rounded-lg flex-1 flex flex-col justify-center items-center ${canSetTemperature ? 'hover:bg-bambu-dark-tertiary transition-colors cursor-pointer' : 'cursor-default'}`}
+                    title={canSetTemperature ? 'Set bed temperature' : undefined}
+                  >
                     <HeaterThermometer className="w-3.5 h-3.5 mb-0.5" color="text-blue-400" isHeating={bedHeating} />
                     <p className="text-[9px] text-bambu-gray">{t('printers.temperatures.bed')}</p>
                     <p className="text-[11px] text-white">
-                      {Math.round(status.temperatures.bed || 0)}°C
+                      {Math.round(temps.bed || 0)}°C
                     </p>
-                  </div>
-                  {status.temperatures.chamber !== undefined && (
-                    <div className="text-center px-2 py-1.5 bg-bambu-dark rounded-lg flex-1 flex flex-col justify-center items-center">
+                    {renderTempPopover('bed', t('printers.temperatures.bed'), temps.bed, temps.bed_target)}
+                  </button>
+                  {temps.chamber !== undefined && (
+                    <button
+                      type="button"
+                      onClick={() => openTempControl('chamber', temps.chamber_target)}
+                      disabled={!canSetTemperature}
+                      className={`relative text-center px-2 py-1.5 bg-bambu-dark rounded-lg flex-1 flex flex-col justify-center items-center ${canSetTemperature ? 'hover:bg-bambu-dark-tertiary transition-colors cursor-pointer' : 'cursor-default'}`}
+                      title={canSetTemperature ? 'Set chamber temperature' : undefined}
+                    >
                       <HeaterThermometer className="w-3.5 h-3.5 mb-0.5" color="text-green-400" isHeating={chamberHeating} />
                       <p className="text-[9px] text-bambu-gray">{t('printers.temperatures.chamber')}</p>
                       <p className="text-[11px] text-white">
-                        {Math.round(status.temperatures.chamber || 0)}°C
+                        {Math.round(temps.chamber || 0)}°C
                       </p>
-                    </div>
+                      {renderTempPopover('chamber', t('printers.temperatures.chamber'), temps.chamber, temps.chamber_target)}
+                    </button>
                   )}
                   {/* Active nozzle indicator for dual-nozzle printers */}
                   {isDualNozzle && (
@@ -3182,7 +3316,7 @@ function PrinterCard({
                       <div className="w-px h-5 bg-bambu-gray/30" />
 
                       {/* Airduct Mode (P2S / X2D / H2*) */}
-                      {(['P2S', 'X2D', 'H2D', 'H2C', 'H2S'].includes(printer.model ?? '')) && (() => {
+                      {capabilities.can_airduct_mode && (['P2S', 'X2D', 'H2D', 'H2C', 'H2S'].includes(printer.model ?? '')) && (() => {
                         const isHeating = status.airduct_mode === 1;
                         const Icon = isHeating ? Flame : Snowflake;
                         const color = isHeating ? 'text-orange-400' : 'text-sky-400';
@@ -3232,7 +3366,7 @@ function PrinterCard({
                       })()}
 
                       {/* Print Speed */}
-                      {(() => {
+                      {capabilities.can_print_speed && (() => {
                         const speedLabels: Record<number, string> = { 1: '50%', 2: '100%', 3: '124%', 4: '166%' };
                         const speedPct = speedLabels[status.speed_level] || '100%';
                         return (
@@ -3292,7 +3426,7 @@ function PrinterCard({
                       <div className="w-px h-5 bg-bambu-gray/30" />
 
                       {/* Bed Jog (Z-axis) — compact badge, popover holds the actual controls */}
-                      {(() => {
+                      {capabilities.can_bed_jog && (() => {
                         const canControl = hasPermission('printers:control');
                         const disabled = isPrinting || !canControl;
                         const bambuIsPlateBelow = true; // positive Z moves plate away from nozzle
@@ -3382,11 +3516,11 @@ function PrinterCard({
                       {/* Stop button */}
                       <button
                         onClick={() => setShowStopConfirm(true)}
-                        disabled={!isPrinting || isControlBusy || !hasPermission('printers:control')}
+                        disabled={!isPrinting || isControlBusy || !hasPermission('printers:control') || !capabilities.can_stop}
                         className={`
                           flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium
                           transition-colors
-                          ${isPrinting && hasPermission('printers:control')
+                          ${isPrinting && hasPermission('printers:control') && capabilities.can_stop
                             ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                             : 'bg-bambu-dark text-bambu-gray/50 cursor-not-allowed'
                           }
@@ -3400,11 +3534,11 @@ function PrinterCard({
                       {/* Pause/Resume button */}
                       <button
                         onClick={() => isPaused ? setShowResumeConfirm(true) : setShowPauseConfirm(true)}
-                        disabled={!isPrinting || isControlBusy || !hasPermission('printers:control')}
+                        disabled={!isPrinting || isControlBusy || !hasPermission('printers:control') || (isPaused ? !capabilities.can_resume : !capabilities.can_pause)}
                         className={`
                           flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium
                           transition-colors
-                          ${isPrinting && hasPermission('printers:control')
+                          ${isPrinting && hasPermission('printers:control') && (isPaused ? capabilities.can_resume : capabilities.can_pause)
                             ? isPaused
                               ? 'bg-bambu-green/20 text-bambu-green hover:bg-bambu-green/30'
                               : 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
@@ -3460,13 +3594,13 @@ function PrinterCard({
                                 <AmsNameHoverCard
                                   ams={ams}
                                   printerId={printer.id}
-                                  label={getAmsLabel(ams.id, ams.tray.length)}
+                                  label={getAmsLabel(ams.id, ams.tray.length, ams.module_type)}
                                   amsLabels={amsLabels}
                                   canEdit={hasPermission('printers:update')}
                                   onSaved={refetchAmsLabels}
                                 >
                                   <span className="text-[10px] text-white font-medium cursor-default select-none">
-                                    {amsLabels?.[ams.id] || getAmsLabel(ams.id, ams.tray.length)}
+                                    {amsLabels?.[ams.id] || getAmsLabel(ams.id, ams.tray.length, ams.module_type)}
                                   </span>
                                 </AmsNameHoverCard>
                                 {isDualNozzle && (isLeftNozzle || isRightNozzle) && (
@@ -3482,7 +3616,7 @@ function PrinterCard({
                                       fairThreshold={amsThresholds?.humidityFair}
                                       onClick={() => setAmsHistoryModal({
                                         amsId: ams.id,
-                                        amsLabel: getAmsLabel(ams.id, ams.tray.length),
+                                        amsLabel: getAmsLabel(ams.id, ams.tray.length, ams.module_type),
                                         mode: 'humidity',
                                       })}
                                       compact
@@ -3495,7 +3629,7 @@ function PrinterCard({
                                       fairThreshold={amsThresholds?.tempFair}
                                       onClick={() => setAmsHistoryModal({
                                         amsId: ams.id,
-                                        amsLabel: getAmsLabel(ams.id, ams.tray.length),
+                                        amsLabel: getAmsLabel(ams.id, ams.tray.length, ams.module_type),
                                         mode: 'temperature',
                                       })}
                                       compact
@@ -3807,7 +3941,7 @@ function PrinterCard({
                                                   material: tray?.tray_type ?? undefined,
                                                   profile: filamentData.profile,
                                                   color: filamentData.colorHex || '',
-                                                  location: `${getAmsLabel(ams.id, ams.tray.length)} Slot ${slotIdx + 1}`,
+                                                  location: `${getAmsLabel(ams.id, ams.tray.length, ams.module_type)} Slot ${slotIdx + 1}`,
                                                 },
                                               }),
                                               onUnassignSpool: (spoolmanSpool && !isBambuLabSpool(tray)) ? () => onUnassignSpoolmanSpool?.(spoolmanSpool.id) : undefined,
@@ -3832,7 +3966,7 @@ function PrinterCard({
                                                 material: tray?.tray_type ?? undefined,
                                                 profile: filamentData.profile,
                                                 color: filamentData.colorHex || '',
-                                                location: `${getAmsLabel(ams.id, ams.tray.length)} Slot ${slotIdx + 1}`,
+                                                location: `${getAmsLabel(ams.id, ams.tray.length, ams.module_type)} Slot ${slotIdx + 1}`,
                                               },
                                             }),
                                             onUnassignSpool: (assignment && !isBambuLabSpool(tray)) ? () => onUnassignSpool?.(printer.id, ams.id, slotIdx) : undefined,
@@ -3878,7 +4012,7 @@ function PrinterCard({
                                             material: undefined,
                                             profile: '',
                                             color: '',
-                                            location: `${getAmsLabel(ams.id, ams.tray.length)} Slot ${slotIdx + 1}`,
+                                            location: `${getAmsLabel(ams.id, ams.tray.length, ams.module_type)} Slot ${slotIdx + 1}`,
                                           },
                                         })}
                                       >
@@ -4005,13 +4139,13 @@ function PrinterCard({
                               <AmsNameHoverCard
                                 ams={ams}
                                 printerId={printer.id}
-                                label={getAmsLabel(ams.id, ams.tray.length)}
+                                label={getAmsLabel(ams.id, ams.tray.length, ams.module_type)}
                                 amsLabels={amsLabels}
                                 canEdit={hasPermission('printers:update')}
                                 onSaved={refetchAmsLabels}
                               >
                                 <span className="text-[10px] text-white font-medium cursor-default select-none">
-                                  {amsLabels?.[ams.id] || getAmsLabel(ams.id, ams.tray.length)}
+                                  {amsLabels?.[ams.id] || getAmsLabel(ams.id, ams.tray.length, ams.module_type)}
                                 </span>
                               </AmsNameHoverCard>
                               {isDualNozzle && (isLeftNozzle || isRightNozzle) && (
@@ -4206,7 +4340,7 @@ function PrinterCard({
                                               material: tray?.tray_type ?? undefined,
                                               profile: filamentData.profile,
                                               color: filamentData.colorHex || '',
-                                              location: getAmsLabel(ams.id, ams.tray.length),
+                                              location: getAmsLabel(ams.id, ams.tray.length, ams.module_type),
                                             },
                                           }),
                                           onUnassignSpool: (spoolmanSpool && !isBambuLabSpool(tray)) ? () => onUnassignSpoolmanSpool?.(spoolmanSpool.id) : undefined,
@@ -4231,7 +4365,7 @@ function PrinterCard({
                                             material: tray?.tray_type ?? undefined,
                                             profile: filamentData.profile,
                                             color: filamentData.colorHex || '',
-                                            location: getAmsLabel(ams.id, ams.tray.length),
+                                            location: getAmsLabel(ams.id, ams.tray.length, ams.module_type),
                                           },
                                         }),
                                         onUnassignSpool: (assignment && !isBambuLabSpool(tray)) ? () => onUnassignSpool?.(printer.id, ams.id, htSlotId) : undefined,
@@ -4277,7 +4411,7 @@ function PrinterCard({
                                         material: undefined,
                                         profile: '',
                                         color: '',
-                                        location: getAmsLabel(ams.id, ams.tray.length),
+                                        location: getAmsLabel(ams.id, ams.tray.length, ams.module_type),
                                       },
                                     })}
                                   >
@@ -4295,7 +4429,7 @@ function PrinterCard({
                                       fairThreshold={amsThresholds?.tempFair}
                                       onClick={() => setAmsHistoryModal({
                                         amsId: ams.id,
-                                        amsLabel: getAmsLabel(ams.id, ams.tray.length),
+                                        amsLabel: getAmsLabel(ams.id, ams.tray.length, ams.module_type),
                                         mode: 'temperature',
                                       })}
                                       compact
@@ -4308,7 +4442,7 @@ function PrinterCard({
                                       fairThreshold={amsThresholds?.humidityFair}
                                       onClick={() => setAmsHistoryModal({
                                         amsId: ams.id,
-                                        amsLabel: getAmsLabel(ams.id, ams.tray.length),
+                                        amsLabel: getAmsLabel(ams.id, ams.tray.length, ams.module_type),
                                         mode: 'humidity',
                                       })}
                                       compact
@@ -4741,16 +4875,18 @@ function PrinterCard({
         {viewMode === 'expanded' && (
           <div className="mt-4 pt-4 border-t border-bambu-dark-tertiary flex items-center justify-end gap-2 flex-wrap">
               {/* Chamber Light */}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => chamberLightMutation.mutate(!status?.chamber_light)}
-                disabled={!status?.connected || chamberLightMutation.isPending || !hasPermission('printers:control')}
-                title={!hasPermission('printers:control') ? t('printers.permission.noControl') : (status?.chamber_light ? t('printers.chamberLightOff') : t('printers.chamberLightOn'))}
-                className={status?.chamber_light ? '!border-yellow-500 !text-yellow-400 hover:!bg-yellow-500/20' : ''}
-              >
-                <ChamberLight on={status?.chamber_light ?? false} className={`w-4 h-4 ${status?.chamber_light ? 'text-yellow-400' : ''}`} />
-              </Button>
+              {capabilities.can_chamber_light && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => chamberLightMutation.mutate(!status?.chamber_light)}
+                  disabled={!status?.connected || chamberLightMutation.isPending || !hasPermission('printers:control')}
+                  title={!hasPermission('printers:control') ? t('printers.permission.noControl') : (status?.chamber_light ? t('printers.chamberLightOff') : t('printers.chamberLightOn'))}
+                  className={status?.chamber_light ? '!border-yellow-500 !text-yellow-400 hover:!bg-yellow-500/20' : ''}
+                >
+                  <ChamberLight on={status?.chamber_light ?? false} className={`w-4 h-4 ${status?.chamber_light ? 'text-yellow-400' : ''}`} />
+                </Button>
+              )}
               {/* Camera Button */}
               <Button
                 variant="secondary"

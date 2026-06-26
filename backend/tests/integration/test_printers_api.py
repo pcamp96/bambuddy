@@ -334,6 +334,129 @@ class TestPrintersAPI:
         encoded_name = content_disposition.split("filename*=UTF-8''", 1)[1]
         assert unquote(encoded_name) == filename
 
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_list_printer_files_flashforge_reports_limited_capabilities(
+        self,
+        async_client: AsyncClient,
+        printer_factory,
+    ):
+        """FlashForge supports file listing, but not Bambu-style file actions."""
+        printer = await printer_factory(
+            model="FlashForge Creator 5 Pro",
+            serial_number="FF-TEST-SERIAL",
+            access_code="ff-test-key",
+        )
+        listed_files = [
+            {
+                "name": "cow.gcode.3mf",
+                "size": 12345,
+                "modified": None,
+                "is_directory": False,
+            }
+        ]
+
+        with patch(
+            "backend.app.api.routes.printers.list_files_async",
+            new=AsyncMock(return_value=listed_files),
+        ) as list_mock:
+            response = await async_client.get(
+                f"/api/v1/printers/{printer.id}/files",
+                params={"path": "/"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["files"][0]["path"] == "/cow.gcode.3mf"
+        assert data["files"][0]["thumbnail_url"] == f"/api/v1/printers/{printer.id}/files/thumbnail?path=/cow.gcode.3mf"
+        assert data["capabilities"]["can_download"] is False
+        assert data["capabilities"]["can_delete"] is False
+        assert data["capabilities"]["can_preview"] is False
+        assert data["capabilities"]["can_browse_directories"] is False
+        assert "file listing/upload" in data["capabilities"]["unsupported_reason"]
+        list_mock.assert_awaited_once_with(
+            printer.ip_address,
+            printer.access_code,
+            "/",
+            printer_model="FlashForge Creator 5 Pro",
+            serial_number="FF-TEST-SERIAL",
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_flashforge_file_thumbnail_uses_local_api(
+        self,
+        async_client: AsyncClient,
+        printer_factory,
+    ):
+        printer = await printer_factory(
+            model="FlashForge Creator 5 Pro",
+            serial_number="FF-TEST-SERIAL",
+            access_code="ff-test-key",
+        )
+
+        with patch(
+            "backend.app.api.routes.printers.get_flashforge_gcode_thumbnail",
+            return_value=(b"\xff\xd8\xff\xe0thumb", "image/jpeg"),
+        ) as thumb_mock:
+            response = await async_client.get(
+                f"/api/v1/printers/{printer.id}/files/thumbnail",
+                params={"path": "/cow.gcode.3mf"},
+            )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/jpeg"
+        assert response.content.startswith(b"\xff\xd8\xff")
+        thumb_mock.assert_called_once_with(
+            printer.ip_address,
+            "FF-TEST-SERIAL",
+            "ff-test-key",
+            "/cow.gcode.3mf",
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    @pytest.mark.parametrize(
+        ("method", "path", "kwargs", "expected_detail"),
+        [
+            ("GET", "/files/download", {"params": {"path": "/cow.gcode.3mf"}}, "file downloads"),
+            ("GET", "/files/gcode", {"params": {"path": "/cow.gcode.3mf"}}, "G-code downloads"),
+            ("GET", "/files/plates", {"params": {"path": "/cow.gcode.3mf"}}, "3MF plate metadata"),
+            (
+                "GET",
+                "/files/plate-thumbnail/1",
+                {"params": {"path": "/cow.gcode.3mf"}},
+                "3MF plate thumbnails",
+            ),
+            ("POST", "/files/download-zip", {"json": {"paths": ["/cow.gcode.3mf"]}}, "file downloads"),
+            ("DELETE", "/files", {"params": {"path": "/cow.gcode.3mf"}}, "file deletion"),
+        ],
+    )
+    async def test_flashforge_file_actions_report_unsupported_before_ftp_access(
+        self,
+        async_client: AsyncClient,
+        printer_factory,
+        method: str,
+        path: str,
+        kwargs: dict,
+        expected_detail: str,
+    ):
+        """Unsupported FlashForge file actions should fail cleanly without trying FTP."""
+        printer = await printer_factory(model="FlashForge Creator 5 Pro")
+
+        with (
+            patch("backend.app.api.routes.printers.download_file_bytes_async", new=AsyncMock()) as download_mock,
+            patch("backend.app.api.routes.printers.delete_file_async", new=AsyncMock()) as delete_mock,
+        ):
+            response = await async_client.request(method, f"/api/v1/printers/{printer.id}{path}", **kwargs)
+
+        assert response.status_code == 501
+        detail = response.json()["detail"]
+        assert "FlashForge" in detail
+        assert expected_detail in detail
+        download_mock.assert_not_awaited()
+        delete_mock.assert_not_awaited()
+
     # ========================================================================
     # Status endpoint
     # ========================================================================
@@ -352,6 +475,67 @@ class TestPrintersAPI:
         result = response.json()
         assert "connected" in result
         assert "state" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_flashforge_status_reports_supported_capabilities(self, async_client: AsyncClient, printer_factory):
+        """FlashForge cards should only advertise controls backed by the local API."""
+        from backend.app.services.bambu_mqtt import PrinterState
+
+        printer = await printer_factory(model="Flashforge Creator 5 Pro")
+        state = PrinterState(connected=True, state="RUNNING")
+        state.current_print = "cow.gcode.3mf"
+        state.gcode_file = "cow.gcode.3mf"
+        state.subtask_name = "cow.gcode.3mf"
+
+        mock_pm = MagicMock()
+        mock_pm.get_status.return_value = state
+        mock_pm.is_awaiting_plate_clear.return_value = False
+
+        with patch("backend.app.api.routes.printers.printer_manager", mock_pm):
+            response = await async_client.get(f"/api/v1/printers/{printer.id}/status")
+
+        assert response.status_code == 200
+        capabilities = response.json()["capabilities"]
+        assert capabilities["can_pause"] is True
+        assert capabilities["can_resume"] is True
+        assert capabilities["can_stop"] is True
+        assert capabilities["can_upload_files"] is True
+        assert capabilities["can_list_files"] is True
+        assert capabilities["can_stream_camera"] is True
+        assert capabilities["can_chamber_light"] is True
+        assert capabilities["can_print_speed"] is True
+        assert capabilities["can_set_temperature"] is True
+        assert capabilities["can_bed_jog"] is False
+        assert capabilities["can_skip_objects"] is False
+        assert capabilities["can_download_files"] is False
+        assert capabilities["can_delete_files"] is False
+        assert "known LAN API" in capabilities["unsupported_reasons"]["can_skip_objects"]
+        assert "file listing/upload" in capabilities["unsupported_reasons"]["can_download_files"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_status_preserves_hms_error_message(self, async_client: AsyncClient, printer_factory):
+        """Plain-language error messages should survive status serialization for non-Bambu APIs."""
+        from backend.app.services.bambu_mqtt import HMSError, PrinterState
+
+        printer = await printer_factory(model="Flashforge Creator 5 Pro")
+        state = PrinterState(connected=True, state="FAILED")
+        state.hms_errors = [
+            HMSError(code="42", attr=42, module=0, severity=2, message="Platform blocked"),
+        ]
+
+        mock_pm = MagicMock()
+        mock_pm.get_status.return_value = state
+        mock_pm.is_awaiting_plate_clear.return_value = False
+
+        with patch("backend.app.api.routes.printers.printer_manager", mock_pm):
+            response = await async_client.get(f"/api/v1/printers/{printer.id}/status")
+
+        assert response.status_code == 200
+        assert response.json()["hms_errors"] == [
+            {"code": "42", "attr": 42, "module": 0, "severity": 2, "message": "Platform blocked"}
+        ]
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -741,6 +925,24 @@ class TestPrintControlAPI:
             assert response.json()["success"] is True
             mock_client.stop_print.assert_called_once()
 
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_stop_print_flashforge_uses_local_client(self, async_client: AsyncClient, printer_factory):
+        """FlashForge stop is supported by the local API client and must not be blocked."""
+        printer = await printer_factory(name="Creator", model="FlashForge Creator 5 Pro")
+
+        mock_client = MagicMock()
+        mock_client.stop_print.return_value = True
+
+        with patch("backend.app.api.routes.printers.printer_manager") as mock_pm:
+            mock_pm.get_client.return_value = mock_client
+
+            response = await async_client.post(f"/api/v1/printers/{printer.id}/print/stop")
+
+            assert response.status_code == 200
+            assert response.json()["success"] is True
+            mock_client.stop_print.assert_called_once()
+
     # ========================================================================
     # Pause print endpoint
     # ========================================================================
@@ -771,6 +973,24 @@ class TestPrintControlAPI:
     async def test_pause_print_success(self, async_client: AsyncClient, printer_factory):
         """Verify successful pause print request."""
         printer = await printer_factory(name="Printing Printer")
+
+        mock_client = MagicMock()
+        mock_client.pause_print.return_value = True
+
+        with patch("backend.app.api.routes.printers.printer_manager") as mock_pm:
+            mock_pm.get_client.return_value = mock_client
+
+            response = await async_client.post(f"/api/v1/printers/{printer.id}/print/pause")
+
+            assert response.status_code == 200
+            assert response.json()["success"] is True
+            mock_client.pause_print.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_pause_print_flashforge_uses_local_client(self, async_client: AsyncClient, printer_factory):
+        """FlashForge pause is supported by the local API client and must not be blocked."""
+        printer = await printer_factory(name="Creator", model="FlashForge Creator 5 Pro")
 
         mock_client = MagicMock()
         mock_client.pause_print.return_value = True
@@ -826,6 +1046,62 @@ class TestPrintControlAPI:
             assert response.status_code == 200
             assert response.json()["success"] is True
             mock_client.resume_print.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_resume_print_flashforge_uses_local_client(self, async_client: AsyncClient, printer_factory):
+        """FlashForge resume is supported by the local API client and must not be blocked."""
+        printer = await printer_factory(name="Creator", model="FlashForge Creator 5 Pro")
+
+        mock_client = MagicMock()
+        mock_client.resume_print.return_value = True
+
+        with patch("backend.app.api.routes.printers.printer_manager") as mock_pm:
+            mock_pm.get_client.return_value = mock_client
+
+            response = await async_client.post(f"/api/v1/printers/{printer.id}/print/resume")
+
+            assert response.status_code == 200
+            assert response.json()["success"] is True
+            mock_client.resume_print.assert_called_once()
+
+
+class TestFlashForgeCapabilityRoutes:
+    """FlashForge route-level capability guards."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    @pytest.mark.parametrize(
+        ("method", "path", "kwargs", "expected_detail"),
+        [
+            ("POST", "/airduct-mode?mode=cooling", {}, "airduct"),
+            ("POST", "/bed-jog?distance=1", {}, "Z jog"),
+            ("POST", "/home-axes?axes=all", {}, "homing"),
+            ("GET", "/print/objects", {}, "object skipping"),
+            ("POST", "/print/skip-objects", {"json": [1]}, "object skipping"),
+            ("POST", "/drying/start?ams_id=0", {}, "filament drying"),
+            ("POST", "/drying/stop?ams_id=0", {}, "filament drying"),
+            ("POST", "/print-options?module_name=spaghetti_detector&enabled=true", {}, "AI print option"),
+            ("POST", "/calibration?bed_leveling=true", {}, "calibration"),
+        ],
+    )
+    async def test_bambu_only_routes_report_flashforge_unsupported(
+        self,
+        async_client: AsyncClient,
+        printer_factory,
+        method: str,
+        path: str,
+        kwargs: dict,
+        expected_detail: str,
+    ):
+        printer = await printer_factory(name="Creator", model="FlashForge Creator 5 Pro")
+
+        response = await async_client.request(method, f"/api/v1/printers/{printer.id}{path}", **kwargs)
+
+        assert response.status_code == 501
+        detail = response.json()["detail"]
+        assert "FlashForge" in detail
+        assert expected_detail in detail
 
 
 class TestAMSRefreshAPI:
@@ -1567,6 +1843,24 @@ class TestChamberLightAPI:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
+    async def test_chamber_light_flashforge_success(self, async_client: AsyncClient, printer_factory):
+        """FlashForge chamber light should use its local HTTP control command."""
+        printer = await printer_factory(name="Creator", model="Flashforge Creator 5 Pro")
+
+        mock_client = MagicMock()
+        mock_client.set_chamber_light.return_value = True
+        mock_client.state = type("State", (), {"chamber_light": False})()
+
+        with patch("backend.app.api.routes.printers.printer_manager") as mock_pm:
+            mock_pm.get_client.return_value = mock_client
+            response = await async_client.post(f"/api/v1/printers/{printer.id}/chamber-light?on=true")
+
+        assert response.status_code == 200
+        mock_client.set_chamber_light.assert_called_once_with(True)
+        assert mock_client.state.chamber_light is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
     async def test_chamber_light_on_success(self, async_client: AsyncClient, printer_factory):
         """Verify successful chamber light on request."""
         printer = await printer_factory(name="Test Printer")
@@ -1621,6 +1915,112 @@ class TestChamberLightAPI:
 
             assert response.status_code == 500
             assert "failed" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_print_speed_flashforge_success(self, async_client: AsyncClient, printer_factory):
+        """FlashForge print speed should use its local HTTP control command."""
+        printer = await printer_factory(name="Creator", model="Flashforge Creator 5 Pro")
+
+        mock_client = MagicMock()
+        mock_client.set_print_speed.return_value = True
+
+        with patch("backend.app.api.routes.printers.printer_manager") as mock_pm:
+            mock_pm.get_client.return_value = mock_client
+            response = await async_client.post(f"/api/v1/printers/{printer.id}/print-speed?mode=3")
+
+        assert response.status_code == 200
+        mock_client.set_print_speed.assert_called_once_with(3)
+
+
+class TestTemperatureControlAPI:
+    """Integration tests for heater target control."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_temperature_not_found(self, async_client: AsyncClient):
+        response = await async_client.post("/api/v1/printers/99999/temperature?heater=nozzle&target=205")
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_temperature_rejects_unknown_heater(self, async_client: AsyncClient, printer_factory):
+        printer = await printer_factory(name="Creator", model="Flashforge Creator 5 Pro")
+
+        response = await async_client.post(f"/api/v1/printers/{printer.id}/temperature?heater=laser&target=205")
+
+        assert response.status_code == 400
+        assert "heater" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_temperature_rejects_out_of_range_target(self, async_client: AsyncClient, printer_factory):
+        printer = await printer_factory(name="Creator", model="Flashforge Creator 5 Pro")
+
+        response = await async_client.post(f"/api/v1/printers/{printer.id}/temperature?heater=nozzle&target=500")
+
+        assert response.status_code == 400
+        assert "between" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_temperature_rejects_non_flashforge_for_now(self, async_client: AsyncClient, printer_factory):
+        printer = await printer_factory(name="P1S", model="P1S")
+
+        response = await async_client.post(f"/api/v1/printers/{printer.id}/temperature?heater=nozzle&target=205")
+
+        assert response.status_code == 501
+        assert "FlashForge" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_temperature_not_connected(self, async_client: AsyncClient, printer_factory):
+        printer = await printer_factory(name="Creator", model="Flashforge Creator 5 Pro")
+
+        with patch("backend.app.api.routes.printers.printer_manager") as mock_pm:
+            mock_pm.get_client.return_value = None
+            response = await async_client.post(f"/api/v1/printers/{printer.id}/temperature?heater=bed&target=60")
+
+        assert response.status_code == 400
+        assert "not connected" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_temperature_flashforge_success_updates_cached_target(self, async_client: AsyncClient, printer_factory):
+        printer = await printer_factory(name="Creator", model="Flashforge Creator 5 Pro")
+
+        mock_client = MagicMock()
+        mock_client.set_temperature.return_value = True
+        mock_client.state = type(
+            "State",
+            (),
+            {"temperatures": {"nozzle": 180, "nozzle_target": 180, "nozzle_heating": False}},
+        )()
+
+        with patch("backend.app.api.routes.printers.printer_manager") as mock_pm:
+            mock_pm.get_client.return_value = mock_client
+            response = await async_client.post(f"/api/v1/printers/{printer.id}/temperature?heater=nozzle&target=205")
+
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+        mock_client.set_temperature.assert_called_once_with("nozzle", 205)
+        assert mock_client.state.temperatures["nozzle_target"] == 205
+        assert mock_client.state.temperatures["nozzle_heating"] is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_temperature_flashforge_failure(self, async_client: AsyncClient, printer_factory):
+        printer = await printer_factory(name="Creator", model="Flashforge Creator 5 Pro")
+
+        mock_client = MagicMock()
+        mock_client.set_temperature.return_value = False
+
+        with patch("backend.app.api.routes.printers.printer_manager") as mock_pm:
+            mock_pm.get_client.return_value = mock_client
+            response = await async_client.post(f"/api/v1/printers/{printer.id}/temperature?heater=bed&target=60")
+
+        assert response.status_code == 500
+        assert "failed" in response.json()["detail"].lower()
 
 
 class TestAirductModeAPI:
@@ -1709,6 +2109,24 @@ class TestClearHMSErrorsAPI:
             result = response.json()
             assert result["success"] is True
             assert "cleared" in result["message"].lower()
+            mock_client.clear_hms_errors.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_clear_hms_errors_flashforge_uses_local_client(self, async_client: AsyncClient, printer_factory):
+        """FlashForge clear-errors is supported by the local API client and must not be blocked."""
+        printer = await printer_factory(name="Creator", model="FlashForge Creator 5 Pro")
+
+        mock_client = MagicMock()
+        mock_client.clear_hms_errors.return_value = True
+
+        with patch("backend.app.api.routes.printers.printer_manager") as mock_pm:
+            mock_pm.get_client.return_value = mock_client
+
+            response = await async_client.post(f"/api/v1/printers/{printer.id}/hms/clear")
+
+            assert response.status_code == 200
+            assert response.json()["success"] is True
             mock_client.clear_hms_errors.assert_called_once()
 
     @pytest.mark.asyncio

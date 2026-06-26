@@ -216,6 +216,38 @@ describe('StreamOverlayPage', () => {
   });
 
   describe('FPS configuration', () => {
+    it('does not render the stream image until a stream token arrives when auth is enabled', async () => {
+      let resolveToken!: () => void;
+      const tokenGate = new Promise<void>((resolve) => {
+        resolveToken = resolve;
+      });
+
+      server.use(
+        http.get('*/api/v1/auth/status', () =>
+          HttpResponse.json({ auth_enabled: true, requires_setup: false })
+        ),
+        http.post('*/api/v1/printers/camera/stream-token', async () => {
+          await tokenGate;
+          return HttpResponse.json({ token: 'overlay-token' });
+        })
+      );
+
+      renderOverlayPage(1);
+
+      await waitFor(() => {
+        expect(screen.getByText('Printer is idle')).toBeInTheDocument();
+      });
+      expect(screen.queryByAltText('Camera stream')).not.toBeInTheDocument();
+
+      resolveToken();
+
+      await waitFor(() => {
+        const img = screen.getByAltText('Camera stream') as HTMLImageElement;
+        expect(img.src).toContain('/api/v1/printers/1/camera/stream');
+        expect(img.src).toContain('token=overlay-token');
+      });
+    });
+
     it('uses default FPS of 15 when not specified', async () => {
       renderOverlayPage(1);
 

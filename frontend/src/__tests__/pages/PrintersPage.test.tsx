@@ -355,6 +355,168 @@ describe('PrintersPage', () => {
       expect(screen.queryByRole('button', { name: 'Mark plate as cleared' })).not.toBeInTheDocument();
     });
 
+    it('hides unsupported Bambu-only controls while keeping supported FlashForge controls', async () => {
+      server.use(
+        http.get('/api/v1/printers/', () => {
+          return HttpResponse.json([
+            {
+              ...mockPrinters[0],
+              id: 5,
+              name: 'Creator 5 Pro',
+              model: 'Flashforge Creator 5 Pro',
+            },
+          ]);
+        }),
+        http.get('/api/v1/printers/:id/status', () => {
+          return HttpResponse.json({
+            ...mockPrinterStatus,
+            state: 'RUNNING',
+            current_print: 'cow.gcode.3mf',
+            subtask_name: 'cow.gcode.3mf',
+            gcode_file: 'cow.gcode.3mf',
+            temperatures: {
+              nozzle: 209,
+              nozzle_target: 210,
+              nozzle_heating: false,
+              bed: 60,
+              bed_target: 60,
+              bed_heating: false,
+              chamber: 25,
+              chamber_target: 35,
+              chamber_heating: false,
+            },
+            printable_objects_count: 2,
+            ams: [
+              {
+                id: 0,
+                module_type: 'flashforge_ifs',
+                tray: [
+                  { id: 0, tray_type: 'PLA', tray_color: 'FCEBD7FF', remain: 100 },
+                  { id: 1, tray_type: 'PLA', tray_color: 'FFFFFFFF', remain: 100 },
+                  { id: 2, tray_type: 'PLA', tray_color: '805003FF', remain: 100 },
+                  { id: 3, tray_type: 'PLA', tray_color: '1B1B1BFF', remain: 100 },
+                ],
+              },
+            ],
+            capabilities: {
+              can_pause: true,
+              can_resume: true,
+              can_stop: true,
+              can_clear_errors: true,
+              can_chamber_light: true,
+              can_print_speed: true,
+              can_set_temperature: true,
+              can_airduct_mode: false,
+              can_bed_jog: false,
+              can_home_axes: false,
+              can_skip_objects: false,
+              can_dry_filament: false,
+              can_calibrate: false,
+              can_upload_files: true,
+              can_list_files: true,
+              can_download_files: false,
+              can_delete_files: false,
+              can_preview_files: false,
+              can_browse_files: false,
+              can_stream_camera: true,
+            },
+          });
+        })
+      );
+
+      render(<PrintersPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Creator 5 Pro')).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('cow.gcode.3mf')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('IFS-A')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+      expect(screen.getByTitle(/chamber light/i)).toBeInTheDocument();
+      expect(screen.getByTitle(/speed/i)).toBeInTheDocument();
+      expect(screen.getByTitle(/set nozzle temperature/i)).toBeInTheDocument();
+      expect(screen.queryByTitle(/skip/i)).not.toBeInTheDocument();
+    });
+
+    it('sets FlashForge target temperature from the printer card', async () => {
+      const user = userEvent.setup();
+      let requestedUrl = '';
+
+      server.use(
+        http.get('/api/v1/printers/', () => {
+          return HttpResponse.json([
+            {
+              ...mockPrinters[0],
+              id: 5,
+              name: 'Creator 5 Pro',
+              model: 'Flashforge Creator 5 Pro',
+            },
+          ]);
+        }),
+        http.get('/api/v1/printers/:id/status', () => {
+          return HttpResponse.json({
+            ...mockPrinterStatus,
+            state: 'RUNNING',
+            temperatures: {
+              nozzle: 209,
+              nozzle_target: 210,
+              nozzle_heating: false,
+              bed: 60,
+              bed_target: 60,
+              bed_heating: false,
+              chamber: 25,
+              chamber_target: 35,
+              chamber_heating: false,
+            },
+            capabilities: {
+              can_pause: true,
+              can_resume: true,
+              can_stop: true,
+              can_clear_errors: true,
+              can_chamber_light: true,
+              can_print_speed: true,
+              can_set_temperature: true,
+              can_airduct_mode: false,
+              can_bed_jog: false,
+              can_home_axes: false,
+              can_skip_objects: false,
+              can_dry_filament: false,
+              can_calibrate: false,
+              can_upload_files: true,
+              can_list_files: true,
+              can_download_files: false,
+              can_delete_files: false,
+              can_preview_files: false,
+              can_browse_files: false,
+              can_stream_camera: true,
+            },
+          });
+        }),
+        http.post('/api/v1/printers/:id/temperature', ({ request }) => {
+          requestedUrl = request.url;
+          return HttpResponse.json({ success: true, message: 'Nozzle target set to 205°C' });
+        })
+      );
+
+      render(<PrintersPage />);
+
+      await user.click(await screen.findByTitle(/set nozzle temperature/i));
+      const input = await screen.findByLabelText(/nozzle target temperature/i);
+      await user.clear(input);
+      await user.type(input, '205');
+      await user.click(screen.getByRole('button', { name: 'Set' }));
+
+      await waitFor(() => {
+        expect(requestedUrl).toContain('heater=nozzle');
+        expect(requestedUrl).toContain('target=205');
+      });
+    });
+
     it('hides plate status and action when plate-clear confirmation is disabled', async () => {
       server.use(
         http.get('/api/v1/settings/', () => {

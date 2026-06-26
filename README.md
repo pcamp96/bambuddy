@@ -118,6 +118,10 @@ Optional but recommended — drop the [`slicer-api/` Compose stack](slicer-api/R
 - **Full automation** — Schedule prints, auto power-off, get notified when done
 - **Multi-printer support** — Manage your entire print farm from one interface
 
+### FlashForge LAN support
+
+Bambuddy includes experimental FlashForge LAN support for confirmed compatible models such as the Creator 5 Pro. It supports monitoring, camera snapshots/streaming, upload/start, pause/resume/stop, heater targets, chamber light, print speed, file listing, thumbnails, and notifications. Some Bambu-only controls are intentionally hidden when the FlashForge LAN API does not expose an equivalent command. See [docs/flashforge-local-api.md](docs/flashforge-local-api.md) for the current feature matrix and capability contract.
+
 ---
 
 ## ✨ Features

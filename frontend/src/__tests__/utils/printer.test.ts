@@ -11,6 +11,18 @@ import { describe, it, expect } from 'vitest';
 import { getPrinterImage } from '../../utils/printer';
 
 describe('getPrinterImage', () => {
+  describe('FlashForge Creator 5 Pro', () => {
+    it('resolves full FlashForge model names to the Creator 5 Pro artwork', () => {
+      expect(getPrinterImage('FlashForge Creator 5 Pro')).toBe('/img/printers/flashforge-creator5pro.svg');
+      expect(getPrinterImage('Flashforge Creator 5 Pro')).toBe('/img/printers/flashforge-creator5pro.svg');
+    });
+
+    it('resolves compact and printer-reported Creator 5 Pro variants', () => {
+      expect(getPrinterImage('Creator 5 Pro')).toBe('/img/printers/flashforge-creator5pro.svg');
+      expect(getPrinterImage('Creator5Pro')).toBe('/img/printers/flashforge-creator5pro.svg');
+    });
+  });
+
   describe('X2D (#988)', () => {
     it('resolves display name "X2D" to x2d.png', () => {
       expect(getPrinterImage('X2D')).toBe('/img/printers/x2d.png');

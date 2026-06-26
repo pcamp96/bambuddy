@@ -3,9 +3,10 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Layers, Clock, Timer, Printer } from 'lucide-react';
-import { api, withStreamToken } from '../api/client';
+import { api, getStreamToken, withStreamToken } from '../api/client';
 import type { PrinterStatus } from '../api/client';
 import { formatDuration, formatETA, type TimeFormat } from '../utils/date';
+import { useAuth } from '../contexts/AuthContext';
 
 type TFunction = (key: string, options?: Record<string, unknown>) => string;
 
@@ -111,6 +112,7 @@ export function StreamOverlayPage() {
   const [searchParams] = useSearchParams();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { authEnabled, user } = useAuth();
   const id = parseInt(printerId || '0', 10);
   const [imageKey, setImageKey] = useState(Date.now());
 
@@ -137,6 +139,13 @@ export function StreamOverlayPage() {
     queryKey: ['settings'],
     queryFn: api.getSettings,
   });
+  const { data: streamTokenData } = useQuery({
+    queryKey: ['camera-stream-token', user?.id ?? null],
+    queryFn: () => api.getCameraStreamToken(),
+    enabled: id > 0 && config.showCamera && (authEnabled ? !!user : true),
+    staleTime: 50 * 60 * 1000,
+  });
+  const streamTokenValue = streamTokenData?.token ?? getStreamToken();
 
   const timeFormat: TimeFormat = settings?.time_format || 'system';
 
@@ -225,12 +234,17 @@ export function StreamOverlayPage() {
 
   const isPrinting = status.state === 'RUNNING' || status.state === 'PAUSE';
   const progress = status.progress || 0;
-  const streamUrl = withStreamToken(`/api/v1/printers/${id}/camera/stream?fps=${config.fps}&t=${imageKey}`);
+  const waitingForStreamToken = authEnabled && config.showCamera && !streamTokenValue;
+  const appendStreamToken = (url: string) =>
+    streamTokenValue ? `${url}&token=${encodeURIComponent(streamTokenValue)}` : withStreamToken(url);
+  const streamUrl = waitingForStreamToken
+    ? ''
+    : appendStreamToken(`/api/v1/printers/${id}/camera/stream?fps=${config.fps}&t=${imageKey}`);
 
   return (
     <div className="min-h-screen bg-black relative overflow-hidden">
       {/* Camera feed - fullscreen background (optional) */}
-      {config.showCamera && (
+      {config.showCamera && !waitingForStreamToken && (
         <img
           key={imageKey}
           src={streamUrl}

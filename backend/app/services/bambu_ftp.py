@@ -841,6 +841,17 @@ async def download_file_async(
         printer_model: Printer model for A1-specific workarounds
     """
     loop = asyncio.get_event_loop()
+
+    from backend.app.services.flashforge_local import is_flashforge_model
+
+    if is_flashforge_model(printer_model):
+        logger.info(
+            "FlashForge file download is not supported by the known local API for %s (%s)",
+            ip_address,
+            remote_path,
+        )
+        return False
+
     is_a1 = printer_model in BambuFTPClient.A1_MODELS if printer_model else False
 
     # Per-attempt completion state: asyncio.wait_for cannot cancel
@@ -947,6 +958,12 @@ async def download_file_try_paths_async(
     """
     loop = asyncio.get_event_loop()
 
+    from backend.app.services.flashforge_local import is_flashforge_model
+
+    if is_flashforge_model(printer_model):
+        logger.info("FlashForge multi-path file download is not supported for %s", ip_address)
+        return False
+
     def _download():
         client = BambuFTPClient(ip_address, access_code, timeout=socket_timeout, printer_model=printer_model)
         if not client.connect():
@@ -978,6 +995,7 @@ async def upload_file_async(
     progress_callback: Callable[[int, int], None] | None = None,
     socket_timeout: float | None = None,
     printer_model: str | None = None,
+    serial_number: str | None = None,
 ) -> bool:
     """Async wrapper for uploading a file with timeout and progress callback.
 
@@ -993,8 +1011,32 @@ async def upload_file_async(
         progress_callback: Optional callback for progress updates
         socket_timeout: FTP socket timeout for slow connections (e.g., A1 printers)
         printer_model: Printer model for A1-specific workarounds
+        serial_number: Printer serial number for FlashForge local HTTP uploads
     """
     loop = asyncio.get_event_loop()
+
+    from backend.app.services.flashforge_local import is_flashforge_model, upload_flashforge_file
+
+    if is_flashforge_model(printer_model):
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: upload_flashforge_file(
+                        ip_address,
+                        serial_number or "",
+                        access_code,
+                        local_path,
+                        remote_path,
+                        progress_callback=progress_callback,
+                    ),
+                ),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            logger.warning("FlashForge upload timed out after %ss for %s", timeout, remote_path)
+            return False
+
     is_a1 = printer_model in BambuFTPClient.A1_MODELS if printer_model else False
 
     def _upload(force_prot_c: bool = False) -> bool:
@@ -1054,6 +1096,7 @@ async def list_files_async(
     timeout: float = 30.0,
     socket_timeout: float | None = None,
     printer_model: str | None = None,
+    serial_number: str | None = None,
 ) -> list[dict]:
     """Async wrapper for listing files with timeout.
 
@@ -1062,6 +1105,21 @@ async def list_files_async(
         printer_model: Printer model for A1-specific workarounds
     """
     loop = asyncio.get_event_loop()
+
+    from backend.app.services.flashforge_local import is_flashforge_model, list_flashforge_files
+
+    if is_flashforge_model(printer_model):
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: list_flashforge_files(ip_address, serial_number or "", access_code, path),
+                ),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            logger.warning("FlashForge list_files timed out after %ss for %s", timeout, path)
+            return []
 
     def _list():
         client = BambuFTPClient(ip_address, access_code, timeout=socket_timeout, printer_model=printer_model)
@@ -1085,6 +1143,7 @@ async def delete_file_async(
     remote_path: str,
     socket_timeout: float | None = None,
     printer_model: str | None = None,
+    serial_number: str | None = None,
 ) -> DeleteResult:
     """Async wrapper for deleting a file.
 
@@ -1097,6 +1156,16 @@ async def delete_file_async(
         printer_model: Printer model for A1-specific workarounds
     """
     loop = asyncio.get_event_loop()
+
+    from backend.app.services.flashforge_local import is_flashforge_model
+
+    if is_flashforge_model(printer_model):
+        logger.info(
+            "FlashForge file deletion is not supported by the known local API for %s (%s)",
+            ip_address,
+            remote_path,
+        )
+        return DeleteResult.FAILED
 
     def _delete() -> DeleteResult:
         client = BambuFTPClient(ip_address, access_code, timeout=socket_timeout, printer_model=printer_model)
@@ -1116,6 +1185,7 @@ async def download_file_bytes_async(
     remote_path: str,
     socket_timeout: float | None = None,
     printer_model: str | None = None,
+    serial_number: str | None = None,
 ) -> bytes | None:
     """Async wrapper for downloading file as bytes.
 
@@ -1124,6 +1194,16 @@ async def download_file_bytes_async(
         printer_model: Printer model for A1-specific workarounds
     """
     loop = asyncio.get_event_loop()
+
+    from backend.app.services.flashforge_local import is_flashforge_model
+
+    if is_flashforge_model(printer_model):
+        logger.info(
+            "FlashForge file download is not supported by the known local API for %s (%s)",
+            ip_address,
+            remote_path,
+        )
+        return None
 
     def _download():
         client = BambuFTPClient(ip_address, access_code, timeout=socket_timeout, printer_model=printer_model)
@@ -1142,6 +1222,7 @@ async def get_storage_info_async(
     access_code: str,
     socket_timeout: float | None = None,
     printer_model: str | None = None,
+    serial_number: str | None = None,
 ) -> dict | None:
     """Async wrapper for getting storage info.
 
@@ -1150,6 +1231,21 @@ async def get_storage_info_async(
         printer_model: Printer model for A1-specific workarounds
     """
     loop = asyncio.get_event_loop()
+
+    from backend.app.services.flashforge_local import get_flashforge_storage_info, is_flashforge_model
+
+    if is_flashforge_model(printer_model):
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: get_flashforge_storage_info(ip_address, serial_number or "", access_code),
+                ),
+                timeout=10,
+            )
+        except TimeoutError:
+            logger.warning("FlashForge storage info timed out for %s", ip_address)
+            return None
 
     def _get_storage():
         client = BambuFTPClient(ip_address, access_code, timeout=socket_timeout, printer_model=printer_model)

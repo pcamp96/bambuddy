@@ -2504,6 +2504,8 @@ export default {
     noFiles: 'No files on printer',
     loadingFiles: 'Loading files...',
     failedToLoad: 'Failed to load files',
+    sizeUnavailable: 'Size unavailable',
+    limitedCapabilities: 'This printer exposes a read-only file list over LAN. Download, delete, and preview actions are unavailable.',
     toast: {
       filesDeleted: 'Deleted {{count}} file(s)',
       deleteFailed: 'Delete failed: {{error}}',
@@ -5683,6 +5685,16 @@ export default {
         pass: 'Reachable — the camera stream will work.',
         warn: 'Port 322 is unreachable. The live camera view will not work. This does not affect printing.',
       },
+      port_flashforge_api: {
+        title: 'FlashForge local API (8898)',
+        pass: 'Reachable — Bambuddy can talk to the printer over the FlashForge LAN API.',
+        fail: 'Port 8898 is unreachable. The printer is powered off, on a different IP address, or a firewall is blocking the FlashForge LAN API.',
+      },
+      port_flashforge_camera: {
+        title: 'FlashForge camera (MJPEG 8080)',
+        pass: 'Reachable — the camera stream should work.',
+        warn: 'Port 8080 is unreachable. Monitoring and printing may still work, but the live camera view will not.',
+      },
       network_mode: {
         title: 'Docker network mode',
         pass: 'Running in host network mode.',
@@ -5706,6 +5718,18 @@ export default {
         pass: 'Developer Mode is enabled.',
         fail: 'Developer Mode is OFF on the printer. Enable it in the printer\'s LAN settings — and confirm with OK. Without it, prints will not start.',
         skip: 'Could not be checked — requires a live connection to the printer.',
+      },
+      flashforge_auth: {
+        title: 'FlashForge device key',
+        pass: 'The printer accepted the saved serial number and device key.',
+        fail: 'The printer is reachable but rejected the saved credentials. Re-copy the device key from the printer LAN page and update this printer in Bambuddy.',
+        skip: 'Not checked — the FlashForge local API could not be reached.',
+      },
+      flashforge_polling: {
+        title: 'Bambuddy polling connection',
+        pass: 'Bambuddy is receiving printer status from the FlashForge local API.',
+        fail: 'Bambuddy is not receiving printer status right now. Check the saved IP address, serial number, and device key, then restart the printer monitor if needed.',
+        skip: 'Not checked — this printer monitor is not running yet.',
       },
       printer_publishing: {
         title: 'Printer is publishing status',
