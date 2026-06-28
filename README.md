@@ -111,6 +111,20 @@ Optional but recommended — drop the [`slicer-api/` Compose stack](slicer-api/R
 
 ---
 
+## 🧩 NEW: Slicer Pipelines — Save a Recipe, Reuse in One Click
+
+**Stop re-picking the same printer + process + filament + bed-type combination every slice.** Save a Slicer **Pipeline** once from the Slice dialog, then apply the whole bundle to any file with a single click — from File Manager, Archives, or MakerWorld imports.
+
+- 🧩 **One-click reuse** — A pipeline captures the entire Slice modal selection (printer + process + per-AMS-slot filaments + bed type) and surfaces as **Run with pipeline → \<name\>** on every sliceable row.
+- 🎯 **Specific printer or printer class** — Pin a pipeline to one printer, or to a *class* (e.g. *any X1C*) and let the queue scheduler pick the first available match. Identical-fleet farms get a single recipe instead of one-per-printer.
+- 🪢 **Multi-copy fanout** — Slice once, dispatch up to N copies. With class targeting the copies fan out across the matching printers in parallel — **Spread** (fastest wall-clock), **Single printer** (minimise colour-change overhead), or **First N** (one to each).
+- 📊 **Runs dashboard** — A new **Pipelines** tab on the Print Queue page lists every run with colour-coded status badges (queued / slicing / dispatching / in-progress / completed / partial-failure / failed / cancelled), per-copy detail on expand, filter dropdowns (Pipeline / Status / Target), and a **Retry failed** button that re-runs only the copies that didn't complete — successful copies are never re-printed.
+- 🔒 **Permission-gated** — Three permissions (`pipelines:read` / `pipelines:write` / `pipelines:run`) let you split authoring the recipe from spending filament with it.
+
+👉 **[Slicer Pipelines Guide →](https://wiki.bambuddy.cool/features/slicer-pipelines/)**
+
+---
+
 ## Why Bambuddy?
 
 - **Own your data** — All print history stored locally, no cloud dependency
