@@ -343,6 +343,13 @@ _active_prints: dict[tuple[int, str], int] = {}
 # nozzle parking on slicer profiles with Timelapse Type = Smooth).
 _stage22_finish_frames: dict[int, bytes] = {}
 
+# Archive IDs that already emitted a terminal completion/stopped notification
+# during this process lifetime. Duplicate MQTT/reconcile callbacks can race at
+# end-of-print; this prevents a single print from notifying as both stopped and
+# completed while keeping the archive row as the source of truth.
+_terminal_notification_archive_ids: set[int] = set()
+_terminal_notification_lock = asyncio.Lock()
+
 # Per-printer "connected" edge tracker. Used by `on_printer_status_change`
 # to fire `reconcile_stale_active_prints` exactly once per (re)connection
 # (#1542 follow-up — power-cycle ghost prints). The value is True after
@@ -4447,7 +4454,7 @@ async def on_print_complete(printer_id: int, data: dict):
         try:
             logger.info("[PHOTO-BG] Starting finish photo capture for archive %s", archive_id)
 
-            from backend.app.api.routes.camera import _active_chamber_streams, _active_streams, get_buffered_frame
+            from backend.app.api.routes.camera import get_recent_buffered_frame
 
             async with async_session() as db:
                 from backend.app.api.routes.settings import get_setting
@@ -4540,17 +4547,11 @@ async def on_print_complete(printer_id: int, data: dict):
                                         await asyncio.to_thread(photo_path.write_bytes, frame_data)
                                         logger.info("[PHOTO-BG] Saved external camera frame: %s", photo_filename)
                                 else:
-                                    # Check if camera stream is active - use buffered frame to avoid freeze
-                                    # Check both RTSP streams (_active_streams) and chamber image streams (_active_chamber_streams)
-                                    active_for_printer = [k for k in _active_streams if k.startswith(f"{printer_id}-")]
-                                    active_chamber_for_printer = [
-                                        k for k in _active_chamber_streams if k.startswith(f"{printer_id}-")
-                                    ]
-                                    buffered_frame = get_buffered_frame(printer_id)
+                                    buffered_frame = get_recent_buffered_frame(printer_id)
 
-                                    if (active_for_printer or active_chamber_for_printer) and buffered_frame:
+                                    if buffered_frame:
                                         # Use frame from active stream
-                                        logger.info("[PHOTO-BG] Using buffered frame from active stream")
+                                        logger.info("[PHOTO-BG] Using buffered/recent camera frame")
                                         photos_dir = archive_dir / "photos"
                                         photos_dir.mkdir(parents=True, exist_ok=True)
                                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -4617,10 +4618,21 @@ async def on_print_complete(printer_id: int, data: dict):
                 printer_name = printer.name if printer else f"Printer {printer_id}"
 
                 archive_data = None
+                effective_print_status = print_status
                 if archive_id:
                     archive_result = await db.execute(select(PrintArchive).where(PrintArchive.id == archive_id))
                     archive = archive_result.scalar_one_or_none()
                     if archive:
+                        if archive.status in ("completed", "failed", "aborted", "cancelled"):
+                            if archive.status != print_status:
+                                logger.info(
+                                    "[NOTIFY-BG] Archive %s terminal status %s overrides stale callback status %s",
+                                    archive_id,
+                                    archive.status,
+                                    print_status,
+                                )
+                            effective_print_status = archive.status
+
                         # Actual elapsed time from started_at/completed_at when both are
                         # populated (every terminal status sets completed_at after #1198).
                         # Falls back to None so the notification path can decide whether to
@@ -4702,8 +4714,19 @@ async def on_print_complete(printer_id: int, data: dict):
                             except Exception as e:
                                 logger.warning("[NOTIFY-BG] Failed to read finish photo bytes: %s", e)
 
+                if archive_id and effective_print_status in ("completed", "failed", "aborted", "cancelled"):
+                    async with _terminal_notification_lock:
+                        if archive_id in _terminal_notification_archive_ids:
+                            logger.info(
+                                "[NOTIFY-BG] Skipping duplicate terminal notification for archive %s (status=%s)",
+                                archive_id,
+                                effective_print_status,
+                            )
+                            return
+                        _terminal_notification_archive_ids.add(archive_id)
+
                 await notification_service.on_print_complete(
-                    printer_id, printer_name, print_status, data, db, archive_data=archive_data
+                    printer_id, printer_name, effective_print_status, data, db, archive_data=archive_data
                 )
 
                 # Send user-specific email notification
@@ -4711,7 +4734,7 @@ async def on_print_complete(printer_id: int, data: dict):
                     created_by_id = archive_data.get("created_by_id")
                     raw_filename = data.get("subtask_name") or data.get("filename", "Unknown")
                     await _dispatch_user_print_email(
-                        print_status,
+                        effective_print_status,
                         created_by_id,
                         printer_name,
                         raw_filename,

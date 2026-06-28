@@ -29,6 +29,9 @@ export function AddNotificationModal({ provider, onClose }: AddNotificationModal
   // Daily digest
   const [dailyDigestEnabled, setDailyDigestEnabled] = useState(provider?.daily_digest_enabled || false);
   const [dailyDigestTime, setDailyDigestTime] = useState(provider?.daily_digest_time || '08:00');
+  const [includeImage, setIncludeImage] = useState(
+    String(provider?.config?.include_image ?? 'true').toLowerCase() !== 'false',
+  );
 
   // Event toggles
   const [onPrintStart, setOnPrintStart] = useState(provider?.on_print_start ?? false);
@@ -143,10 +146,13 @@ export function AddNotificationModal({ provider, onClose }: AddNotificationModal
       }
     }
 
-    const finalConfig: Record<string, unknown> =
-      providerType === 'ntfy' && Object.keys(eventPriorities).length > 0
-        ? { ...config, event_priorities: eventPriorities }
-        : config;
+    let finalConfig: Record<string, unknown> = { ...config };
+    if (providerType === 'ntfy' && Object.keys(eventPriorities).length > 0) {
+      finalConfig = { ...finalConfig, event_priorities: eventPriorities };
+    }
+    if (providerType === 'homeassistant') {
+      finalConfig = { ...finalConfig, include_image: includeImage ? 'true' : 'false' };
+    }
 
     const data = {
       name: name.trim(),
@@ -307,6 +313,7 @@ export function AddNotificationModal({ provider, onClose }: AddNotificationModal
               onChange={(e) => {
                 setProviderType(e.target.value as ProviderType);
                 setConfig({}); // Reset config when changing type
+                setIncludeImage(true);
                 setTestResult(null);
               }}
               disabled={isEditing}
@@ -362,6 +369,15 @@ export function AddNotificationModal({ provider, onClose }: AddNotificationModal
                 )}
               </div>
             ))}
+            {providerType === 'homeassistant' && (
+              <div className="flex items-center justify-between rounded-lg bg-bambu-dark p-3">
+                <div>
+                  <span className="text-sm text-white">Include camera image</span>
+                  <p className="text-xs text-bambu-gray">Attach a printer snapshot to supported Home Assistant mobile notifications.</p>
+                </div>
+                <Toggle checked={includeImage} onChange={setIncludeImage} />
+              </div>
+            )}
           </div>
 
           {/* Test Button */}

@@ -574,7 +574,12 @@ class NotificationService:
             return False, f"Webhook error: {str(e)}"
 
     async def _send_homeassistant(
-        self, config: dict, title: str, message: str, db: AsyncSession | None = None
+        self,
+        config: dict,
+        title: str,
+        message: str,
+        db: AsyncSession | None = None,
+        variables: dict | None = None,
     ) -> tuple[bool, str]:
         """Send notification via Home Assistant.
 
@@ -643,6 +648,9 @@ class NotificationService:
             "title": title,
             "message": message,
         }
+        image_url = self._homeassistant_image_url(config, variables)
+        if image_url:
+            payload["data"] = {"image": image_url}
 
         client = await self._get_client()
         response = await client.post(url, json=payload, headers=headers)
@@ -653,6 +661,19 @@ class NotificationService:
             return False, "Home Assistant authentication failed - check your token"
         else:
             return False, f"HTTP {response.status_code}: {response.text[:200]}"
+
+    def _homeassistant_image_url(self, config: dict | None, variables: dict | None) -> str | None:
+        """Return a Home Assistant mobile-app image URL from notification variables."""
+        if str((config or {}).get("include_image", "true")).strip().lower() in {"0", "false", "no", "off"}:
+            return None
+        if not variables:
+            return None
+
+        for key in ("finish_photo_url", "snapshot_url", "image_url"):
+            value = variables.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
 
     async def _send_to_provider(
         self,
@@ -690,7 +711,7 @@ class NotificationService:
                     config, title, message, image_data=image_data, event_type=event_type, variables=variables
                 )
             elif provider.provider_type == "homeassistant":
-                return await self._send_homeassistant(config, title, message, db=db)
+                return await self._send_homeassistant(config, title, message, db=db, variables=variables)
             else:
                 return False, f"Unknown provider type: {provider.provider_type}"
         except Exception as e:
@@ -960,6 +981,11 @@ class NotificationService:
             "reason": "Unknown",
         }
 
+        raw_data = data.get("raw_data") if isinstance(data.get("raw_data"), dict) else {}
+        actual_time_seconds = raw_data.get("print_duration_seconds") or data.get("print_duration_seconds")
+        if actual_time_seconds:
+            variables["duration"] = self._format_duration(actual_time_seconds)
+
         if archive_data:
             # {{duration}} on completion / failure / stopped events is the *actual*
             # elapsed time (#1198). Slicer-estimated print_time_seconds is only used
@@ -1000,6 +1026,11 @@ class NotificationService:
             if archive_data.get("progress") is not None:
                 variables["progress"] = str(archive_data["progress"])
 
+        if not variables.get("finish_photo_url"):
+            snapshot_url = await self._build_snapshot_url(db, printer_id)
+            if snapshot_url:
+                variables["snapshot_url"] = snapshot_url
+
         # Extract image data for providers that support attachments (e.g. Pushover)
         image_data = None
         if archive_data:
@@ -1017,6 +1048,30 @@ class NotificationService:
             printer_name,
             image_data=image_data,
             variables=variables,
+        )
+
+    async def _build_snapshot_url(self, db: AsyncSession, printer_id: int | None) -> str | None:
+        """Build a cache-busted camera snapshot URL for notification providers."""
+        if not printer_id:
+            return None
+        try:
+            from backend.app.api.routes.settings import get_setting
+
+            external_url = await get_setting(db, "external_url")
+        except Exception as exc:
+            logger.debug("Could not read external_url for notification snapshot: %s", exc)
+            return None
+
+        if not external_url:
+            return None
+
+        from backend.app.core.auth import create_camera_stream_token
+
+        external_url = external_url.rstrip("/")
+        token = await create_camera_stream_token()
+        return (
+            f"{external_url}/api/v1/printers/{printer_id}/camera/snapshot"
+            f"?token={quote(token)}&ts={int(datetime.now().timestamp())}"
         )
 
     async def on_print_progress(

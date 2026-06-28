@@ -101,16 +101,22 @@ def _remaining_minutes(detail: dict[str, Any], mapped_state: str) -> int:
     estimated_seconds = _number(detail.get("estimatedTime"), 0.0)
     duration_seconds = _number(detail.get("printDuration"), 0.0)
 
-    if mapped_state in {"RUNNING", "PAUSE"} and estimated_seconds > 0 and duration_seconds > 0:
-        seconds_left = estimated_seconds - duration_seconds
-        if seconds_left > 0:
-            candidates.append(seconds_left)
-        else:
-            return 0
-
     progress = _number(detail.get("printProgress", detail.get("progress")), 0.0)
     if 0 < progress <= 1:
         progress *= 100
+
+    if mapped_state in {"RUNNING", "PAUSE"} and estimated_seconds > 0:
+        if duration_seconds > 0 and estimated_seconds > duration_seconds:
+            candidates.append(estimated_seconds - duration_seconds)
+        elif 0 < progress < 100:
+            # Firmware builds disagree about `estimatedTime`: some report the
+            # total job estimate, others report the remaining job time. If the
+            # value is lower than elapsed duration while the job is still
+            # printing, treating it as a total would collapse remaining time to
+            # zero. Keep it as a remaining-time candidate and let the
+            # progress-derived estimate below sanity-check it.
+            candidates.append(estimated_seconds)
+
     if mapped_state in {"RUNNING", "PAUSE"} and duration_seconds > 0 and 0 < progress < 100:
         progress_left = duration_seconds * ((100 - progress) / progress)
         if progress_left > 0:

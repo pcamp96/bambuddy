@@ -83,6 +83,24 @@ def get_buffered_frame(printer_id: int) -> bytes | None:
     return _last_frames.get(printer_id)
 
 
+def get_recent_buffered_frame(printer_id: int, max_age_seconds: float = 300.0) -> bytes | None:
+    """Return the last frame for a printer if it is recent enough.
+
+    Live streams keep the latest JPEG in memory so one-shot snapshot callers do
+    not have to open a competing camera socket. Keep using that frame briefly
+    after the viewer disconnects too: Bambu P/A chamber-image printers can
+    reject or time out on immediate fresh reconnects at the end of a print,
+    even though the just-viewed frame is perfectly good for a notification
+    thumbnail.
+    """
+    import time
+
+    last_frame_time = _last_frame_times.get(printer_id)
+    if last_frame_time is None or time.time() - last_frame_time > max_age_seconds:
+        return None
+    return _last_frames.get(printer_id)
+
+
 def _format_mjpeg_frame(frame: bytes) -> bytes:
     return (
         b"--frame\r\n"
@@ -240,10 +258,11 @@ async def generate_chamber_mjpeg_stream(
             _disconnect_events.pop(stream_id, None)
             _stream_last_frame_times.pop(stream_id, None)
 
-        # Clean up frame buffer and timestamps
+        # Keep the latest frame around briefly for notification snapshots and
+        # finish photos. Fresh one-shot chamber-image reconnects are flaky on
+        # P/A printers right after a viewer disconnects; age checks on readers
+        # prevent stale thumbnails from living forever.
         if printer_id is not None:
-            _last_frames.pop(printer_id, None)
-            _last_frame_times.pop(printer_id, None)
             _stream_start_times.pop(printer_id, None)
 
         # Close the connection
@@ -601,10 +620,10 @@ async def generate_rtsp_mjpeg_stream(
             _disconnect_events.pop(stream_id, None)
             _stream_last_frame_times.pop(stream_id, None)
 
-        # Clean up frame buffer and timestamps
+        # Keep the latest frame around briefly for notification snapshots and
+        # finish photos. Fresh one-shot RTSP/chamber-image reconnects can be
+        # less reliable than a recent buffered frame; readers enforce max age.
         if printer_id is not None:
-            _last_frames.pop(printer_id, None)
-            _last_frame_times.pop(printer_id, None)
             _stream_start_times.pop(printer_id, None)
 
         if process:
@@ -951,7 +970,7 @@ async def camera_snapshot(
     # watching — avoids opening a second concurrent RTSP socket on printers
     # that allow only one camera connection (e.g. X2D firmware 01.01.00.00;
     # see #1271). Buffered frame is <1s old while a viewer is connected.
-    buffered = try_get_active_buffered_frame(printer_id)
+    buffered = try_get_active_buffered_frame(printer_id) or get_recent_buffered_frame(printer_id)
     if buffered:
         return Response(
             content=buffered,

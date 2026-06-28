@@ -878,6 +878,80 @@ class TestHomeAssistantProvider:
             assert payload["message"] == "Test Message"
 
     @pytest.mark.asyncio
+    async def test_send_homeassistant_includes_image_data_url(self, service):
+        """Verify HA mobile-app notifications receive an image URL when available."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        mock_db = AsyncMock()
+
+        with (
+            patch.object(service, "_get_client", new_callable=AsyncMock) as mock_get_client,
+            patch(
+                "backend.app.api.routes.settings.get_homeassistant_settings",
+                new_callable=AsyncMock,
+            ) as mock_ha_settings,
+        ):
+            mock_get_client.return_value = mock_client
+            mock_ha_settings.return_value = {
+                "ha_url": "http://ha.local:8123",
+                "ha_token": "test-token-123",
+                "ha_enabled": True,
+            }
+
+            success, _message = await service._send_homeassistant(
+                {"service": "notify.mobile_app_phone"},
+                "Test Title",
+                "Test Message",
+                db=mock_db,
+                variables={"snapshot_url": "http://bambuddy.local/api/v1/printers/1/camera/snapshot?ts=123"},
+            )
+
+        assert success is True
+        payload = mock_client.post.call_args.kwargs["json"]
+        assert payload["data"]["image"] == "http://bambuddy.local/api/v1/printers/1/camera/snapshot?ts=123"
+
+    @pytest.mark.asyncio
+    async def test_send_homeassistant_omits_image_when_disabled(self, service):
+        """Verify HA image payload can be disabled per provider."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        mock_db = AsyncMock()
+
+        with (
+            patch.object(service, "_get_client", new_callable=AsyncMock) as mock_get_client,
+            patch(
+                "backend.app.api.routes.settings.get_homeassistant_settings",
+                new_callable=AsyncMock,
+            ) as mock_ha_settings,
+        ):
+            mock_get_client.return_value = mock_client
+            mock_ha_settings.return_value = {
+                "ha_url": "http://ha.local:8123",
+                "ha_token": "test-token-123",
+                "ha_enabled": True,
+            }
+
+            success, _message = await service._send_homeassistant(
+                {"service": "notify.mobile_app_phone", "include_image": "false"},
+                "Test Title",
+                "Test Message",
+                db=mock_db,
+                variables={"snapshot_url": "http://bambuddy.local/api/v1/printers/1/camera/snapshot?ts=123"},
+            )
+
+        assert success is True
+        payload = mock_client.post.call_args.kwargs["json"]
+        assert "data" not in payload
+
+    @pytest.mark.asyncio
     async def test_send_homeassistant_no_db_no_env(self, service):
         """Verify HA provider fails gracefully without DB or env vars."""
         with patch.dict("os.environ", {}, clear=True):
@@ -1154,6 +1228,78 @@ class TestNotificationVariableFallbacks:
 
         assert captured_variables["duration"] != "Unknown"
         assert "1h" in captured_variables["duration"]
+
+    @pytest.mark.asyncio
+    async def test_duration_uses_raw_print_duration_when_archive_missing(self, service):
+        """FlashForge no-archive notifications should still report elapsed print time."""
+        mock_db = AsyncMock()
+        mock_provider = MagicMock()
+        mock_provider.id = 1
+
+        captured_variables: dict = {}
+
+        async def capture_build(db, event_type, variables):
+            captured_variables.update(variables)
+            return ("Test", "Test")
+
+        with (
+            patch.object(service, "_get_providers_for_event", new_callable=AsyncMock) as mock_get,
+            patch.object(service, "_send_to_providers", new_callable=AsyncMock),
+            patch.object(service, "_build_message_from_template", side_effect=capture_build),
+            patch("backend.app.api.routes.settings.get_setting", new_callable=AsyncMock, return_value=None),
+        ):
+            mock_get.return_value = [mock_provider]
+
+            await service.on_print_complete(
+                printer_id=1,
+                printer_name="Creator 5 Pro",
+                status="completed",
+                data={
+                    "subtask_name": "flashforge_print",
+                    "raw_data": {"print_duration_seconds": 7800},
+                },
+                db=mock_db,
+                archive_data=None,
+            )
+
+        assert captured_variables["duration"] != "Unknown"
+        assert "2h" in captured_variables["duration"]
+        assert "10m" in captured_variables["duration"]
+
+    @pytest.mark.asyncio
+    async def test_print_complete_adds_tokenized_snapshot_url(self, service):
+        """Completion notifications should expose an auth-safe snapshot image URL."""
+        mock_db = AsyncMock()
+        mock_provider = MagicMock()
+        mock_provider.id = 1
+
+        captured_variables: dict = {}
+
+        async def capture_build(db, event_type, variables):
+            captured_variables.update(variables)
+            return ("Test", "Test")
+
+        with (
+            patch.object(service, "_get_providers_for_event", new_callable=AsyncMock) as mock_get,
+            patch.object(service, "_send_to_providers", new_callable=AsyncMock),
+            patch.object(service, "_build_message_from_template", side_effect=capture_build),
+            patch("backend.app.api.routes.settings.get_setting", new_callable=AsyncMock, return_value="http://b.local"),
+            patch("backend.app.core.auth.create_camera_stream_token", new_callable=AsyncMock, return_value="tok 123"),
+        ):
+            mock_get.return_value = [mock_provider]
+
+            await service.on_print_complete(
+                printer_id=7,
+                printer_name="Creator 5 Pro",
+                status="completed",
+                data={"subtask_name": "flashforge_print"},
+                db=mock_db,
+                archive_data=None,
+            )
+
+        assert captured_variables["snapshot_url"].startswith("http://b.local/api/v1/printers/7/camera/snapshot?")
+        assert "token=tok%20123" in captured_variables["snapshot_url"]
+        assert "ts=" in captured_variables["snapshot_url"]
 
     @pytest.mark.asyncio
     async def test_duration_unknown_when_both_time_fields_missing(self, service):

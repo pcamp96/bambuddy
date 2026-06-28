@@ -121,6 +121,20 @@ def test_flashforge_remaining_time_uses_progress_when_estimate_is_missing():
     assert _remaining_minutes(detail, "RUNNING") == 60
 
 
+def test_flashforge_remaining_time_treats_low_estimate_as_remaining_time():
+    detail = _detail_payload()["detail"]
+    detail.update(
+        {
+            "printProgress": 0.6081839203834534,
+            "estimatedTime": 2984,
+            "printDuration": 4840,
+            "remainingTime": 0,
+        }
+    )
+
+    assert _remaining_minutes(detail, "RUNNING") == 50
+
+
 def test_flashforge_remaining_time_accepts_remaining_time_when_it_is_plausible():
     detail = _detail_payload()["detail"]
     detail.update(

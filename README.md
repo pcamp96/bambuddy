@@ -4,6 +4,11 @@
 
 <h1 align="center">Bambuddy</h1>
 
+> This is Patrick Campanale's downstream Bambuddy fork. It keeps upstream
+> Bambuddy as the base and adds printer support that is not planned for the
+> upstream project, starting with FlashForge Creator 5 Pro LAN monitoring.
+> Docker images are published at `ghcr.io/pcamp96/bambuddy:latest`.
+
 <p align="center">
   <strong>Your printers. No cloud. Your rules.</strong><br>
   Self-hosted command center for Bambu Lab &mdash; from one A1 to a 40-printer farm.
