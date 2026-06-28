@@ -463,6 +463,7 @@ def _printer_namespace():
         ip_address="1.2.3.4",
         access_code="abc",
         model="P1S",
+        serial_number="TESTSERIAL",
     )
 
 

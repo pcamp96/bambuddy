@@ -110,7 +110,9 @@ def _format_mjpeg_frame(frame: bytes) -> bytes:
     )
 
 
-async def _generate_flashforge_polling_stream(printer_id: int, ip_address: str, fps: int) -> AsyncGenerator[bytes, None]:
+async def _generate_flashforge_polling_stream(
+    printer_id: int, ip_address: str, fps: int
+) -> AsyncGenerator[bytes, None]:
     """Generate a browser-friendly MJPEG stream from FlashForge's flaky stream endpoint."""
     import time
 

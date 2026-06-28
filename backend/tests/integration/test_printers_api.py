@@ -1986,7 +1986,9 @@ class TestTemperatureControlAPI:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_temperature_flashforge_success_updates_cached_target(self, async_client: AsyncClient, printer_factory):
+    async def test_temperature_flashforge_success_updates_cached_target(
+        self, async_client: AsyncClient, printer_factory
+    ):
         printer = await printer_factory(name="Creator", model="Flashforge Creator 5 Pro")
 
         mock_client = MagicMock()

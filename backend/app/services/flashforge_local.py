@@ -256,12 +256,7 @@ def _gcode_entry_to_file(entry: Any) -> dict[str, Any] | None:
         }
     if not isinstance(entry, dict):
         return None
-    name = (
-        entry.get("gcodeFileName")
-        or entry.get("fileName")
-        or entry.get("name")
-        or entry.get("filename")
-    )
+    name = entry.get("gcodeFileName") or entry.get("fileName") or entry.get("name") or entry.get("filename")
     if not name:
         return None
     seconds = _int(entry.get("printingTime") or entry.get("printTime") or entry.get("estimatedTime"), 0)
@@ -486,11 +481,7 @@ class FlashForgeLocalClient:
 
         self.state.connected = True
         self.state.state = mapped_state
-        current_print = (
-            detail.get("printFileName")
-            or detail.get("currentPrintFile")
-            or detail.get("fileName")
-        )
+        current_print = detail.get("printFileName") or detail.get("currentPrintFile") or detail.get("fileName")
         if not current_print and mapped_state in {"FINISH", "FAILED"}:
             current_print = previous_print
         self.state.current_print = current_print
