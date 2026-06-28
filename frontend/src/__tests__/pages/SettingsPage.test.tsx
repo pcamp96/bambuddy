@@ -634,6 +634,29 @@ describe('SettingsPage', () => {
       });
     });
 
+    it('shows per-filament humidity threshold editor on Workflow tab (#1605)', async () => {
+      const user = userEvent.setup();
+      render(<SettingsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Workflow')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Workflow'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Humidity Thresholds')).toBeInTheDocument();
+        // Default row is unique to the humidity editor (drying presets has no
+        // default row), so we can pin it without disambiguating from the
+        // adjacent drying-presets table that also lists PLA/ASA/etc.
+        expect(screen.getByText('Default (unknown types)')).toBeInTheDocument();
+        // Filament rows render in both tables — assert by count instead of
+        // a single getByText. 8 default filaments × 2 tables = 16 PLAs etc.
+        expect(screen.getAllByText('PLA').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getAllByText('ASA').length).toBeGreaterThanOrEqual(2);
+      });
+    });
+
     it('shows default print options on Workflow tab', async () => {
       const user = userEvent.setup();
       render(<SettingsPage />);
