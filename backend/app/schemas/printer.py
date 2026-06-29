@@ -37,6 +37,7 @@ class PrinterBase(BaseModel):
     external_camera_enabled: bool = False
     external_camera_snapshot_url: str | None = None  # Optional single-frame override; #1177
     camera_rotation: int = 0  # 0, 90, 180, 270 degrees
+    chamber_light_flash_on_error: bool | None = None
 
 
 class PrinterCreate(PrinterBase):
@@ -73,6 +74,7 @@ class PrinterUpdate(BaseModel):
     external_camera_enabled: bool | None = None
     external_camera_snapshot_url: str | None = None  # #1177
     camera_rotation: int | None = None  # 0, 90, 180, 270 degrees
+    chamber_light_flash_on_error: bool | None = None
     plate_detection_enabled: bool | None = None
     plate_detection_roi: PlateDetectionROI | None = None
 
@@ -87,6 +89,7 @@ class PrinterResponse(PrinterBase):
     external_camera_enabled: bool = False
     external_camera_snapshot_url: str | None = None  # #1177
     camera_rotation: int = 0  # 0, 90, 180, 270 degrees
+    chamber_light_flash_on_error: bool | None = None
     plate_detection_enabled: bool = False
     plate_detection_roi: PlateDetectionROI | None = None
     created_at: datetime
@@ -111,6 +114,7 @@ class PrinterResponse(PrinterBase):
             "external_camera_enabled": printer.external_camera_enabled,
             "external_camera_snapshot_url": printer.external_camera_snapshot_url,
             "camera_rotation": printer.camera_rotation,
+            "chamber_light_flash_on_error": printer.chamber_light_flash_on_error,
             "is_active": printer.is_active,
             "nozzle_count": printer.nozzle_count,
             "print_hours_offset": printer.print_hours_offset,

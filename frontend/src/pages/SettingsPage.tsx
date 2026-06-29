@@ -1068,6 +1068,7 @@ export function SettingsPage() {
         camera_view_mode: localSettings.camera_view_mode,
         chamber_light_auto_off_enabled: localSettings.chamber_light_auto_off_enabled,
         chamber_light_auto_off_minutes: localSettings.chamber_light_auto_off_minutes,
+        chamber_light_flash_on_error_enabled: localSettings.chamber_light_flash_on_error_enabled,
         preferred_slicer: localSettings.preferred_slicer,
         open_in_slicer: localSettings.open_in_slicer,
         use_slicer_api: localSettings.use_slicer_api,
@@ -2651,12 +2652,12 @@ export function SettingsPage() {
             <CardHeader>
               <h2 className="text-lg font-semibold text-white flex items-center gap-2">
                 <PowerOff className="w-5 h-5 text-yellow-400" />
-                Chamber Light Auto-Off
+                Chamber Light Automation
               </h2>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-bambu-gray">
-                Automatically turn supported chamber lights off after a printer has been idle with the light on.
+                Manage supported chamber lights automatically across your printer fleet.
               </p>
 
               <div className="flex items-center justify-between gap-4">
@@ -2695,6 +2696,24 @@ export function SettingsPage() {
                   </div>
                 </div>
               )}
+
+              <div className="border-t border-bambu-dark-tertiary pt-3 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-white">Flash on printer error by default</p>
+                  <p className="text-sm text-bambu-gray">
+                    Printers set to inherit will flash supported chamber lights when a new error appears.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.chamber_light_flash_on_error_enabled ?? false}
+                    onChange={(e) => updateSetting('chamber_light_flash_on_error_enabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
+                </label>
+              </div>
             </CardContent>
           </Card>
 

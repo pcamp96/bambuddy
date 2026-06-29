@@ -223,6 +223,10 @@ class AppSettings(BaseModel):
         le=240,
         description="Minutes a chamber light may remain on while the printer is idle before Bambuddy turns it off",
     )
+    chamber_light_flash_on_error_enabled: bool = Field(
+        default=False,
+        description="Default setting for flashing supported chamber lights when a printer reports a new error",
+    )
 
     # Preferred slicer application (server-side / API sidecar slicer)
     preferred_slicer: str = Field(
@@ -500,6 +504,7 @@ class AppSettingsUpdate(BaseModel):
     camera_view_mode: str | None = None
     chamber_light_auto_off_enabled: bool | None = None
     chamber_light_auto_off_minutes: int | None = Field(default=None, ge=1, le=240)
+    chamber_light_flash_on_error_enabled: bool | None = None
     preferred_slicer: str | None = None
     open_in_slicer: str | None = None
     use_slicer_api: bool | None = None

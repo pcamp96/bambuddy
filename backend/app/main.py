@@ -1198,6 +1198,11 @@ async def on_printer_status_change(printer_id: int, state: PrinterState):
     except Exception:
         pass  # Don't fail status callback if MQTT fails
 
+    try:
+        await chamber_light_auto_off_service.handle_status_change(printer_id, state)
+    except Exception as e:
+        logging.getLogger(__name__).warning("Chamber light error flash check failed: %s", e)
+
     if _last_status_broadcast.get(printer_id) == status_key:
         return  # No change, skip WebSocket broadcast
 

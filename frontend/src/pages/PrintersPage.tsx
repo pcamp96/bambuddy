@@ -7295,6 +7295,7 @@ function EditPrinterModal({
     location: printer.location || '',
     auto_archive: printer.auto_archive,
     is_active: printer.is_active,
+    chamber_light_flash_on_error: printer.chamber_light_flash_on_error,
   });
 
   // Setup-time pre-flight — same warn-on-save as the Add-Printer dialog, so an
@@ -7329,6 +7330,7 @@ function EditPrinterModal({
       location: form.location || undefined,
       auto_archive: form.auto_archive,
       is_active: form.is_active,
+      chamber_light_flash_on_error: form.chamber_light_flash_on_error,
     };
     // Only include access_code if it was changed
     if (form.access_code) {
@@ -7468,6 +7470,36 @@ function EditPrinterModal({
               <label htmlFor="edit_auto_archive" className="text-sm text-bambu-gray">
                 {t('printers.modal.autoArchiveLabel')}
               </label>
+            </div>
+            <div>
+              <label className="block text-sm text-bambu-gray mb-1">
+                Chamber light error flash
+              </label>
+              <select
+                className="w-full px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
+                value={
+                  form.chamber_light_flash_on_error === null
+                    ? 'inherit'
+                    : form.chamber_light_flash_on_error
+                      ? 'enabled'
+                      : 'disabled'
+                }
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setForm({
+                    ...form,
+                    chamber_light_flash_on_error:
+                      value === 'inherit' ? null : value === 'enabled',
+                  });
+                }}
+              >
+                <option value="inherit">Inherit global default</option>
+                <option value="enabled">Enabled for this printer</option>
+                <option value="disabled">Disabled for this printer</option>
+              </select>
+              <p className="text-xs text-bambu-gray mt-1">
+                Flashes supported chamber lights once when this printer reports a new error.
+              </p>
             </div>
             {/* Maintenance Mode toggle (#1476) — checkbox is the inverse of
                 is_active because the user-facing concept is "is this printer

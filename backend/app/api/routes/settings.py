@@ -141,6 +141,7 @@ async def _build_settings_response(db: AsyncSession, is_api_key: bool = False) -
             "ldap_auto_provision",
             "local_login_enabled",
             "chamber_light_auto_off_enabled",
+            "chamber_light_flash_on_error_enabled",
         ]:
             settings_dict[setting.key] = setting.value.lower() == "true"
         elif setting.key in [
