@@ -93,7 +93,7 @@ def test_flashforge_seconds_are_converted_to_bambuddy_minutes():
     assert _seconds_to_minutes(0) == 0
 
 
-def test_flashforge_remaining_time_prefers_total_estimate_over_stale_remaining_time():
+def test_flashforge_remaining_time_prefers_total_estimate_over_progress_when_remaining_time_is_stale():
     detail = _detail_payload()["detail"]
     detail.update(
         {
@@ -104,7 +104,7 @@ def test_flashforge_remaining_time_prefers_total_estimate_over_stale_remaining_t
         }
     )
 
-    assert _remaining_minutes(detail, "RUNNING") == 97
+    assert _remaining_minutes(detail, "RUNNING") == 107
 
 
 def test_flashforge_remaining_time_uses_progress_when_estimate_is_missing():
@@ -147,6 +147,32 @@ def test_flashforge_remaining_time_accepts_remaining_time_when_it_is_plausible()
     )
 
     assert _remaining_minutes(detail, "RUNNING") == 55
+
+
+def test_flashforge_remaining_time_clamps_large_single_poll_drops():
+    client = FlashForgeLocalClient("192.0.2.211", "SN123", "code", model="Creator 5 Pro")
+    first_detail = _detail_payload()["detail"]
+    first_detail.update(
+        {
+            "printFileName": "long-print.gcode.3mf",
+            "printProgress": 25,
+            "estimatedTime": 21600,
+            "printDuration": 3600,
+            "remainingTime": 0,
+        }
+    )
+    second_detail = dict(first_detail)
+    second_detail.update(
+        {
+            "printProgress": 70,
+            "estimatedTime": 7200,
+            "printDuration": 7200,
+        }
+    )
+
+    with patch("backend.app.services.flashforge_local.time.time", side_effect=[1000.0, 1010.0]):
+        assert client._remaining_time_for_detail(first_detail, "RUNNING", "long-print.gcode.3mf") == 300
+        assert client._remaining_time_for_detail(second_detail, "RUNNING", "long-print.gcode.3mf") == 284
 
 
 @pytest.mark.parametrize(

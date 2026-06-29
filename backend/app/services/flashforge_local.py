@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_FLASHFORGE_PORT = 8898
 FLASHFORGE_POLL_INTERVAL_SECONDS = 10.0
 FLASHFORGE_STALE_AFTER_SECONDS = 45.0
+FLASHFORGE_REMAINING_TIME_MAX_SECONDS = 7 * 24 * 60 * 60
+FLASHFORGE_REMAINING_TIME_DROP_FLOOR_MINUTES = 5
+FLASHFORGE_REMAINING_TIME_DROP_RATIO = 0.05
 FLASHFORGE_JOB_CONTROL_CMD = "jobCtl_cmd"
 FLASHFORGE_STATE_CONTROL_CMD = "stateCtrl_cmd"
 FLASHFORGE_LIGHT_CONTROL_CMD = "lightControl_cmd"
@@ -97,45 +100,48 @@ def _remaining_minutes(detail: dict[str, Any], mapped_state: str) -> int:
     if mapped_state == "FINISH":
         return 0
 
-    candidates: list[float] = []
     estimated_seconds = _number(detail.get("estimatedTime"), 0.0)
     duration_seconds = _number(detail.get("printDuration"), 0.0)
+    explicit_remaining = _number(detail.get("remainingTime"), 0.0)
 
     progress = _number(detail.get("printProgress", detail.get("progress")), 0.0)
     if 0 < progress <= 1:
         progress *= 100
 
-    if mapped_state in {"RUNNING", "PAUSE"} and estimated_seconds > 0:
+    if mapped_state not in {"RUNNING", "PAUSE"}:
+        return _seconds_to_minutes(explicit_remaining or estimated_seconds, 0)
+
+    estimated_remaining = 0.0
+    progress_remaining = 0.0
+
+    if estimated_seconds > 0:
         if duration_seconds > 0 and estimated_seconds > duration_seconds:
-            candidates.append(estimated_seconds - duration_seconds)
+            estimated_remaining = estimated_seconds - duration_seconds
         elif 0 < progress < 100:
             # Firmware builds disagree about `estimatedTime`: some report the
             # total job estimate, others report the remaining job time. If the
             # value is lower than elapsed duration while the job is still
             # printing, treating it as a total would collapse remaining time to
-            # zero. Keep it as a remaining-time candidate and let the
-            # progress-derived estimate below sanity-check it.
-            candidates.append(estimated_seconds)
+            # zero. Keep it as a remaining-time estimate, but do not let it
+            # override a better explicit remaining time below.
+            estimated_remaining = estimated_seconds
 
-    if mapped_state in {"RUNNING", "PAUSE"} and duration_seconds > 0 and 0 < progress < 100:
-        progress_left = duration_seconds * ((100 - progress) / progress)
-        if progress_left > 0:
-            candidates.append(progress_left)
+    if duration_seconds > 0 and 0 < progress < 100:
+        progress_remaining = duration_seconds * ((100 - progress) / progress)
 
-    remaining = _number(detail.get("remainingTime"), 0.0)
-    if remaining > 0:
-        if not candidates:
-            candidates.append(remaining)
-        else:
-            # Treat explicit remaining time as advisory. The FlashForge field
-            # can be a stale/overflowed value; only trust it when it is in the
-            # same rough range as the derived estimates.
-            nearest = min(candidates)
-            if remaining <= nearest * 1.5:
-                candidates.append(remaining)
+    if 0 < explicit_remaining <= FLASHFORGE_REMAINING_TIME_MAX_SECONDS:
+        derived = [value for value in (estimated_remaining, progress_remaining) if value > 0]
+        if not derived:
+            return _seconds_to_minutes(explicit_remaining, 0)
+        nearest = min(derived, key=lambda value: abs(value - explicit_remaining))
+        if nearest <= 0 or 0.5 <= explicit_remaining / nearest <= 1.5:
+            return _seconds_to_minutes(explicit_remaining, 0)
 
-    if candidates:
-        return _seconds_to_minutes(min(candidates), 0)
+    if estimated_remaining > 0:
+        return _seconds_to_minutes(estimated_remaining, 0)
+
+    if progress_remaining > 0:
+        return _seconds_to_minutes(progress_remaining, 0)
 
     return _seconds_to_minutes(estimated_seconds, 0)
 
@@ -305,6 +311,9 @@ class FlashForgeLocalClient:
         self._last_seen = 0.0
         self._last_state = "unknown"
         self._has_seen_state = False
+        self._last_remaining_time: int | None = None
+        self._last_remaining_seen = 0.0
+        self._last_remaining_print: str | None = None
 
     def connect(self) -> None:
         """Start polling the printer."""
@@ -427,6 +436,45 @@ class FlashForgeLocalClient:
         detail = payload.get("detail")
         return detail if isinstance(detail, dict) else None
 
+    def _remaining_time_for_detail(self, detail: dict[str, Any], mapped_state: str, current_print: str | None) -> int:
+        remaining = _remaining_minutes(detail, mapped_state)
+        now = time.time()
+
+        if mapped_state not in {"RUNNING", "PAUSE"} or remaining <= 0:
+            self._last_remaining_time = remaining
+            self._last_remaining_seen = now
+            self._last_remaining_print = current_print
+            return remaining
+
+        if current_print != self._last_remaining_print:
+            self._last_remaining_time = remaining
+            self._last_remaining_seen = now
+            self._last_remaining_print = current_print
+            return remaining
+
+        previous_remaining = self._last_remaining_time
+        previous_seen = self._last_remaining_seen
+        if previous_remaining and previous_seen and remaining < previous_remaining:
+            elapsed_minutes = max(0.0, (now - previous_seen) / 60) if mapped_state == "RUNNING" else 0.0
+            allowed_drop = elapsed_minutes + max(
+                FLASHFORGE_REMAINING_TIME_DROP_FLOOR_MINUTES,
+                previous_remaining * FLASHFORGE_REMAINING_TIME_DROP_RATIO,
+            )
+            minimum_remaining = max(0, int(math.floor(previous_remaining - allowed_drop)))
+            if remaining < minimum_remaining:
+                logger.debug(
+                    "Clamped FlashForge remaining time for %s from %s to %s minutes",
+                    self.ip_address,
+                    remaining,
+                    minimum_remaining,
+                )
+                remaining = minimum_remaining
+
+        self._last_remaining_time = remaining
+        self._last_remaining_seen = now
+        self._last_remaining_print = current_print
+        return remaining
+
     def _post_json(self, path: str, payload: dict[str, Any], timeout: float = 5) -> dict[str, Any] | None:
         body = json.dumps(payload).encode()
         request = Request(
@@ -491,7 +539,7 @@ class FlashForgeLocalClient:
         self.state.progress = progress * 100 if 0 <= progress <= 1 else progress
         if mapped_state == "FINISH":
             self.state.progress = max(self.state.progress, 100.0)
-        self.state.remaining_time = _remaining_minutes(detail, mapped_state)
+        self.state.remaining_time = self._remaining_time_for_detail(detail, mapped_state, current_print)
         self.state.layer_num = _int(detail.get("printLayer", detail.get("currentLayer")), 0)
         self.state.total_layers = _int(detail.get("targetPrintLayer", detail.get("totalLayer")), 0)
         self.state.firmware_version = str(detail.get("firmwareVersion") or "")
