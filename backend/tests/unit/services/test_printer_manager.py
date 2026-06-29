@@ -250,6 +250,13 @@ class TestPrinterManager:
         result = manager.get_status(999)
         assert result is None
 
+    def test_get_drying_targets_returns_none_for_clients_without_cache(self, manager):
+        """Verify non-Bambu clients without drying target state are tolerated."""
+        client = MagicMock(spec=["state", "check_staleness"])
+        manager._clients[1] = client
+
+        assert manager.get_drying_targets(1) is None
+
     # ========================================================================
     # Tests for get_all_statuses
     # ========================================================================
