@@ -227,6 +227,20 @@ class AppSettings(BaseModel):
         default=False,
         description="Default setting for flashing supported chamber lights when a printer reports a new error",
     )
+    chamber_light_print_auto_off_enabled: bool = Field(
+        default=False,
+        description="Default setting for turning supported chamber lights off after the first minutes of a print",
+    )
+    chamber_light_print_auto_off_minutes: int = Field(
+        default=10,
+        ge=1,
+        le=240,
+        description="Minutes a chamber light may remain on after a print starts before Bambuddy turns it off",
+    )
+    chamber_light_print_auto_off_first_layer_enabled: bool = Field(
+        default=False,
+        description="Turn supported chamber lights off after the first layer completes",
+    )
 
     # Preferred slicer application (server-side / API sidecar slicer)
     preferred_slicer: str = Field(
@@ -505,6 +519,9 @@ class AppSettingsUpdate(BaseModel):
     chamber_light_auto_off_enabled: bool | None = None
     chamber_light_auto_off_minutes: int | None = Field(default=None, ge=1, le=240)
     chamber_light_flash_on_error_enabled: bool | None = None
+    chamber_light_print_auto_off_enabled: bool | None = None
+    chamber_light_print_auto_off_minutes: int | None = Field(default=None, ge=1, le=240)
+    chamber_light_print_auto_off_first_layer_enabled: bool | None = None
     preferred_slicer: str | None = None
     open_in_slicer: str | None = None
     use_slicer_api: bool | None = None

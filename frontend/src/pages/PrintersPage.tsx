@@ -1239,6 +1239,7 @@ function IndicatorControlPopover({
   }, [popoverWidth, popoverHeight]);
 
   const showCustomInput = unit !== undefined;
+  const customInputLabel = `${title.replace(/^Set\s+/, '').replace(/\s+Temperatures?$/, '')} target temperature`;
   const submitCustom = () => {
     const value = Number(customValue);
     if (!Number.isFinite(value)) return;
@@ -1293,6 +1294,7 @@ function IndicatorControlPopover({
             >
               <input
                 type="number"
+                aria-label={customInputLabel}
                 min={customMin}
                 max={customMax}
                 step={customStep}
@@ -1377,6 +1379,7 @@ function NozzleTemperatureControlBox({
       >
         <input
           type="number"
+          aria-label={`${label} target temperature`}
           min={0}
           max={320}
           step={1}
@@ -3766,7 +3769,13 @@ function PrinterCard({
                     {/* Nozzle temp - combined for dual nozzle */}
                     <div
                       className={statusControlClass}
-                      title={statusControlTitle}
+                      title={
+                        canUseStatusControls
+                          ? isDualNozzle
+                            ? "Set Nozzle Temperatures"
+                            : "Set Nozzle Temperature"
+                          : statusControlTitle
+                      }
                       onClick={() => canUseStatusControls && setStatusControlMenu(statusControlMenu === 'nozzle-temp' ? null : 'nozzle-temp')}
                     >
                       <button
@@ -7296,6 +7305,7 @@ function EditPrinterModal({
     auto_archive: printer.auto_archive,
     is_active: printer.is_active,
     chamber_light_flash_on_error: printer.chamber_light_flash_on_error,
+    chamber_light_print_auto_off: printer.chamber_light_print_auto_off,
   });
 
   // Setup-time pre-flight — same warn-on-save as the Add-Printer dialog, so an
@@ -7331,6 +7341,7 @@ function EditPrinterModal({
       auto_archive: form.auto_archive,
       is_active: form.is_active,
       chamber_light_flash_on_error: form.chamber_light_flash_on_error,
+      chamber_light_print_auto_off: form.chamber_light_print_auto_off,
     };
     // Only include access_code if it was changed
     if (form.access_code) {
@@ -7498,7 +7509,37 @@ function EditPrinterModal({
                 <option value="disabled">Disabled for this printer</option>
               </select>
               <p className="text-xs text-bambu-gray mt-1">
-                Flashes supported chamber lights once when this printer reports a new error.
+                Flashes supported chamber lights until the error clears or the door opens.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm text-bambu-gray mb-1">
+                Print-start chamber light auto-off
+              </label>
+              <select
+                className="w-full px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
+                value={
+                  form.chamber_light_print_auto_off === null
+                    ? 'inherit'
+                    : form.chamber_light_print_auto_off
+                      ? 'enabled'
+                      : 'disabled'
+                }
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setForm({
+                    ...form,
+                    chamber_light_print_auto_off:
+                      value === 'inherit' ? null : value === 'enabled',
+                  });
+                }}
+              >
+                <option value="inherit">Inherit global default</option>
+                <option value="enabled">Enabled for this printer</option>
+                <option value="disabled">Disabled for this printer</option>
+              </select>
+              <p className="text-xs text-bambu-gray mt-1">
+                Uses the global timing and first-layer rules when enabled.
               </p>
             </div>
             {/* Maintenance Mode toggle (#1476) — checkbox is the inverse of

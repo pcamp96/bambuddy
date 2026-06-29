@@ -625,7 +625,7 @@ describe('PrintersPage', () => {
             },
           });
         }),
-        http.post('/api/v1/printers/:id/temperature', ({ request }) => {
+        http.post('/api/v1/printers/:id/temperature/nozzle', ({ request }) => {
           requestedUrl = request.url;
           return HttpResponse.json({ success: true, message: 'Nozzle target set to 205°C' });
         })
@@ -640,7 +640,7 @@ describe('PrintersPage', () => {
       await user.click(screen.getByRole('button', { name: 'Set' }));
 
       await waitFor(() => {
-        expect(requestedUrl).toContain('heater=nozzle');
+        expect(requestedUrl).toContain('/temperature/nozzle');
         expect(requestedUrl).toContain('target=205');
       });
     });

@@ -1069,6 +1069,9 @@ export function SettingsPage() {
         chamber_light_auto_off_enabled: localSettings.chamber_light_auto_off_enabled,
         chamber_light_auto_off_minutes: localSettings.chamber_light_auto_off_minutes,
         chamber_light_flash_on_error_enabled: localSettings.chamber_light_flash_on_error_enabled,
+        chamber_light_print_auto_off_enabled: localSettings.chamber_light_print_auto_off_enabled,
+        chamber_light_print_auto_off_minutes: localSettings.chamber_light_print_auto_off_minutes,
+        chamber_light_print_auto_off_first_layer_enabled: localSettings.chamber_light_print_auto_off_first_layer_enabled,
         preferred_slicer: localSettings.preferred_slicer,
         open_in_slicer: localSettings.open_in_slicer,
         use_slicer_api: localSettings.use_slicer_api,
@@ -2696,6 +2699,61 @@ export function SettingsPage() {
                   </div>
                 </div>
               )}
+
+              <div className="border-t border-bambu-dark-tertiary pt-3 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-white">Turn off during prints by default</p>
+                  <p className="text-sm text-bambu-gray">
+                    Keeps lights on for early print checks, then turns them off to save power.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.chamber_light_print_auto_off_enabled ?? false}
+                    onChange={(e) => updateSetting('chamber_light_print_auto_off_enabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
+                </label>
+              </div>
+
+              {localSettings.chamber_light_print_auto_off_enabled && (
+                <div>
+                  <label className="block text-sm text-bambu-gray mb-1">
+                    Turn off after print starts for
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="240"
+                      value={localSettings.chamber_light_print_auto_off_minutes ?? 10}
+                      onChange={(e) => updateSetting('chamber_light_print_auto_off_minutes', Math.max(1, Math.min(240, parseInt(e.target.value, 10) || 10)))}
+                      className="w-24 px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
+                    />
+                    <span className="text-sm text-bambu-gray">minutes</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-white">Turn off after first layer</p>
+                  <p className="text-sm text-bambu-gray">
+                    Shuts supported lights down once the printer reports layer 2 or later.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.chamber_light_print_auto_off_first_layer_enabled ?? false}
+                    onChange={(e) => updateSetting('chamber_light_print_auto_off_first_layer_enabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
+                </label>
+              </div>
 
               <div className="border-t border-bambu-dark-tertiary pt-3 flex items-center justify-between gap-4">
                 <div>

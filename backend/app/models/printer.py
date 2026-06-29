@@ -48,6 +48,8 @@ class Printer(Base):
     awaiting_plate_clear: Mapped[bool] = mapped_column(Boolean, default=False)
     # None inherits the global chamber_light_flash_on_error_enabled setting.
     chamber_light_flash_on_error: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # None inherits the global chamber_light_print_auto_off_enabled setting.
+    chamber_light_print_auto_off: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

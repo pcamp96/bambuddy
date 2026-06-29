@@ -329,6 +329,7 @@ export interface Printer {
   external_camera_snapshot_url: string | null;  // optional single-frame override (#1177)
   camera_rotation: number;  // 0, 90, 180, 270 degrees
   chamber_light_flash_on_error: boolean | null;  // null inherits global default
+  chamber_light_print_auto_off: boolean | null;  // null inherits global default
   plate_detection_enabled: boolean;  // Check plate before print
   plate_detection_roi?: PlateDetectionROI;  // ROI for plate detection
   created_at: string;
@@ -580,6 +581,7 @@ export interface PrinterCreate {
   external_camera_snapshot_url?: string | null;
   camera_rotation?: number;
   chamber_light_flash_on_error?: boolean | null;
+  chamber_light_print_auto_off?: boolean | null;
   plate_detection_enabled?: boolean;
   plate_detection_roi?: PlateDetectionROI;
 }
@@ -1212,6 +1214,9 @@ export interface AppSettings {
   chamber_light_auto_off_enabled: boolean;
   chamber_light_auto_off_minutes: number;
   chamber_light_flash_on_error_enabled: boolean;
+  chamber_light_print_auto_off_enabled: boolean;
+  chamber_light_print_auto_off_minutes: number;
+  chamber_light_print_auto_off_first_layer_enabled: boolean;
   // Preferred slicer (server-side API / sidecar)
   preferred_slicer: 'bambu_studio' | 'orcaslicer';
   // Desktop "Open in Slicer" override (#1329). Null inherits from
