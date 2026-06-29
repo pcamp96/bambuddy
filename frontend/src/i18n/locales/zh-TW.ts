@@ -1537,6 +1537,7 @@ export default {
       smartPlugs: '智慧插座',
       notifications: '通知',
       queue: '工作流程',
+      automation: '自動化',
       filament: '耗材',
       network: '網路',
       apiKeys: 'API 金鑰',

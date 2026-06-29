@@ -1536,6 +1536,7 @@ export default {
       smartPlugs: 'スマートプラグ',
       notifications: '通知',
       queue: 'ワークフロー',
+      automation: '自動化',
       filament: 'フィラメント',
       network: 'ネットワーク',
       apiKeys: 'APIキー',

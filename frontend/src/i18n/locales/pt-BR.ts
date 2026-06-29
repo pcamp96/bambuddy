@@ -1537,6 +1537,7 @@ export default {
       smartPlugs: 'Tomadas Inteligentes',
       notifications: 'Notificações',
       queue: 'Fluxo',
+      automation: 'Automação',
       filament: 'Filamento',
       network: 'Rede',
       apiKeys: 'Chaves API',

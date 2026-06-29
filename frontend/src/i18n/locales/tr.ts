@@ -1539,6 +1539,7 @@ export default {
       smartPlugs: 'Akıllı Prizler',
       notifications: 'Bildirimler',
       queue: 'İş Akışı',
+      automation: 'Otomasyon',
       filament: 'Filament',
       network: 'Ağ',
       apiKeys: 'API Anahtarları',

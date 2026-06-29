@@ -1537,6 +1537,7 @@ export default {
       smartPlugs: 'Prises connectées',
       notifications: 'Notifications',
       queue: 'Flux de travail',
+      automation: 'Automatisation',
       filament: 'Filament',
       network: 'Réseau',
       apiKeys: 'Clés API',

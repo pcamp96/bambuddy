@@ -1538,6 +1538,7 @@ export default {
       smartPlugs: 'Enchufes inteligentes',
       notifications: 'Notificaciones',
       queue: 'Flujo de trabajo',
+      automation: 'Automatización',
       filament: 'Filamento',
       network: 'Red',
       apiKeys: 'Claves API',

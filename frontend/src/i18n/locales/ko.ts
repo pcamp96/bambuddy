@@ -1453,6 +1453,7 @@ export default {
       smartPlugs: '스마트 플러그',
       notifications: '알림',
       queue: '워크플로우',
+      automation: '자동화',
       filament: '필라멘트',
       network: '네트워크',
       apiKeys: 'API 키',

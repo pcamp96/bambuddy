@@ -1537,6 +1537,7 @@ export default {
       smartPlugs: 'Prese smart',
       notifications: 'Notifiche',
       queue: 'Flusso',
+      automation: 'Automazione',
       filament: 'Filamento',
       network: 'Rete',
       apiKeys: 'Chiavi API',
