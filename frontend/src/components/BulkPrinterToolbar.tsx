@@ -10,6 +10,7 @@ import {
   ChevronDown,
   BellOff,
   Eraser,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Button } from './Button';
 import { filterKnownHMSErrors } from './HMSErrorModal';
@@ -33,6 +34,7 @@ interface BulkPrinterToolbarProps {
   onSelectByLocation: (location: string) => void;
   onSelectByState: (state: PrinterState) => void;
   onAction: (action: BulkAction) => void;
+  onEditAutomation: () => void;
   actionPending: boolean;
 }
 
@@ -53,6 +55,7 @@ export function BulkPrinterToolbar({
   onSelectByLocation,
   onSelectByState,
   onAction,
+  onEditAutomation,
   actionPending,
 }: BulkPrinterToolbarProps) {
   const { t } = useTranslation();
@@ -209,6 +212,19 @@ export function BulkPrinterToolbar({
           )}
         </div>
       )}
+
+      <div className="w-px h-6 bg-bambu-dark-tertiary" />
+
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={onEditAutomation}
+        disabled={actionPending || selectedIds.size === 0 || !hasPermission('printers:update')}
+        title={!hasPermission('printers:update') ? t('printers.permission.noEdit', 'No permission to edit printers') : selectedIds.size === 0 ? t('printers.bulk.noneSelected', 'Select at least one printer') : undefined}
+      >
+        <SlidersHorizontal className="w-3.5 h-3.5" />
+        Automation
+      </Button>
 
       <div className="w-px h-6 bg-bambu-dark-tertiary" />
 

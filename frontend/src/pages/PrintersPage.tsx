@@ -7484,7 +7484,7 @@ function EditPrinterModal({
             </div>
             <div>
               <label className="block text-sm text-bambu-gray mb-1">
-                Chamber light error flash
+                Error light flashing
               </label>
               <select
                 className="w-full px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
@@ -7504,7 +7504,7 @@ function EditPrinterModal({
                   });
                 }}
               >
-                <option value="inherit">Inherit global default</option>
+                <option value="inherit">Use farm-wide setting</option>
                 <option value="enabled">Enabled for this printer</option>
                 <option value="disabled">Disabled for this printer</option>
               </select>
@@ -7514,7 +7514,7 @@ function EditPrinterModal({
             </div>
             <div>
               <label className="block text-sm text-bambu-gray mb-1">
-                Print-start chamber light auto-off
+                Early-print light auto-off
               </label>
               <select
                 className="w-full px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
@@ -7534,7 +7534,7 @@ function EditPrinterModal({
                   });
                 }}
               >
-                <option value="inherit">Inherit global default</option>
+                <option value="inherit">Use farm-wide setting</option>
                 <option value="enabled">Enabled for this printer</option>
                 <option value="disabled">Disabled for this printer</option>
               </select>
@@ -7607,6 +7607,103 @@ function EditPrinterModal({
                 </Button>
               </div>
             )}
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+type BulkAutomationValue = 'unchanged' | 'inherit' | 'enabled' | 'disabled';
+
+function BulkAutomationModal({
+  selectedCount,
+  onClose,
+  onApply,
+  isSaving,
+}: {
+  selectedCount: number;
+  onClose: () => void;
+  onApply: (values: { chamber_light_flash_on_error?: boolean | null; chamber_light_print_auto_off?: boolean | null }) => void;
+  isSaving: boolean;
+}) {
+  const [errorFlash, setErrorFlash] = useState<BulkAutomationValue>('unchanged');
+  const [printAutoOff, setPrintAutoOff] = useState<BulkAutomationValue>('unchanged');
+
+  const toOverride = (value: BulkAutomationValue) => {
+    if (value === 'unchanged') return undefined;
+    if (value === 'inherit') return null;
+    return value === 'enabled';
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const patch = {
+      chamber_light_flash_on_error: toOverride(errorFlash),
+      chamber_light_print_auto_off: toOverride(printAutoOff),
+    };
+    if (patch.chamber_light_flash_on_error === undefined && patch.chamber_light_print_auto_off === undefined) {
+      onClose();
+      return;
+    }
+    onApply(patch);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <Card className="w-full max-w-md my-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold mb-1">Bulk Edit Automation</h2>
+              <p className="text-sm text-bambu-gray">
+                Apply chamber light overrides to {selectedCount} selected printer{selectedCount === 1 ? '' : 's'}.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm text-bambu-gray mb-1">Error light flashing</label>
+              <select
+                className="w-full px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
+                value={errorFlash}
+                onChange={(event) => setErrorFlash(event.target.value as BulkAutomationValue)}
+              >
+                <option value="unchanged">Do not change</option>
+                <option value="inherit">Use farm-wide setting</option>
+                <option value="enabled">Enable for selected printers</option>
+                <option value="disabled">Disable for selected printers</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm text-bambu-gray mb-1">Early-print light auto-off</label>
+              <select
+                className="w-full px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
+                value={printAutoOff}
+                onChange={(event) => setPrintAutoOff(event.target.value as BulkAutomationValue)}
+              >
+                <option value="unchanged">Do not change</option>
+                <option value="inherit">Use farm-wide setting</option>
+                <option value="enabled">Enable for selected printers</option>
+                <option value="disabled">Disable for selected printers</option>
+              </select>
+              <p className="text-xs text-bambu-gray mt-1">
+                Timing and first-layer behavior still come from Settings - Automation.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSaving}>
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <SlidersHorizontal className="w-4 h-4" />}
+                Apply to Selected
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
@@ -8008,6 +8105,7 @@ export function PrintersPage() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [bulkConfirmAction, setBulkConfirmAction] = useState<'stop' | 'pause' | 'clearPlate' | null>(null);
   const [bulkActionPending, setBulkActionPending] = useState(false);
+  const [showBulkAutomationModal, setShowBulkAutomationModal] = useState(false);
   const selectionMode = isSelectionMode || selectedPrinterIds.size > 0;
 
   const toggleSelect = useCallback((id: number) => {
@@ -8089,6 +8187,23 @@ export function PrintersPage() {
     setBulkActionPending(false);
     setBulkConfirmAction(null);
   }, [selectedPrinterIds, queryClient, showToast, t]);
+
+  const bulkAutomationMutation = useMutation({
+    mutationFn: async (values: { chamber_light_flash_on_error?: boolean | null; chamber_light_print_auto_off?: boolean | null }) => {
+      const ids = Array.from(selectedPrinterIds);
+      await Promise.all(ids.map((id) => api.updatePrinter(id, values)));
+      return ids.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ['printers'] });
+      showToast(`Updated automation settings for ${count} printer${count === 1 ? '' : 's'}.`);
+      setShowBulkAutomationModal(false);
+      clearSelection();
+    },
+    onError: (error: Error) => {
+      showToast(error.message || 'Failed to update automation settings.', 'error');
+    },
+  });
 
   const handleBulkAction = useCallback((action: 'stop' | 'pause' | 'resume' | 'clearPlate' | 'clearHMS') => {
     // Actions that need confirmation
@@ -8912,6 +9027,7 @@ export function PrintersPage() {
           onSelectByLocation={selectByLocation}
           onSelectByState={selectByState}
           onAction={handleBulkAction}
+          onEditAutomation={() => setShowBulkAutomationModal(true)}
           actionPending={bulkActionPending}
         />
       )}
@@ -8946,6 +9062,14 @@ export function PrintersPage() {
           isLoading={bulkActionPending}
           onConfirm={() => executeBulkAction('clearPlate')}
           onCancel={() => setBulkConfirmAction(null)}
+        />
+      )}
+      {showBulkAutomationModal && (
+        <BulkAutomationModal
+          selectedCount={selectedPrinterIds.size}
+          isSaving={bulkAutomationMutation.isPending}
+          onClose={() => setShowBulkAutomationModal(false)}
+          onApply={(values) => bulkAutomationMutation.mutate(values)}
         />
       )}
 

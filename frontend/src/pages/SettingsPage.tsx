@@ -48,7 +48,7 @@ import { Palette } from 'lucide-react';
 import { registerSettingsSearch, getSettingsSearchEntries } from '../lib/settingsSearch';
 import type { UsersSubTab } from '../lib/settingsSearch';
 
-const validTabs = ['general', 'plugs', 'notifications', 'queue', 'filament', 'network', 'apikeys', 'virtual-printer', 'spoolbuddy', 'failure-detection', 'users', 'backup'] as const;
+const validTabs = ['general', 'plugs', 'notifications', 'queue', 'automation', 'filament', 'network', 'apikeys', 'virtual-printer', 'spoolbuddy', 'failure-detection', 'users', 'backup'] as const;
 type TabType = typeof validTabs[number];
 
 // Cross-tab search registrations for cards rendered inline in this file.
@@ -72,6 +72,7 @@ registerSettingsSearch({ labelKey: 'settings.plateClear', labelFallback: 'Plate-
 registerSettingsSearch({ labelKey: 'settings.gcodeInjection', labelFallback: 'G-code Injection', tab: 'queue', keywords: 'gcode injection start end autoprint farmloop swapmod autoclear printflow', anchor: 'card-gcode' });
 registerSettingsSearch({ labelKey: 'settings.slicerCard', labelFallback: 'Slicer', tab: 'queue', keywords: 'slicer orcaslicer bambustudio orca bambu api sidecar url docker preferred', anchor: 'card-slicer' });
 registerSettingsSearch({ labelKey: 'settings.queueDrying', tab: 'queue', keywords: 'drying presets temperature time humidity ams', anchor: 'card-drying' });
+registerSettingsSearch({ labelKey: 'settings.tabs.automation', labelFallback: 'Automation', tab: 'automation', keywords: 'automation chamber light lights auto off error flash first layer farm', anchor: 'card-chamber-light-auto-off' });
 registerSettingsSearch({ labelKey: 'settings.filamentChecks', tab: 'filament', keywords: 'filament check warning runout remaining', anchor: 'card-filamentchecks' });
 registerSettingsSearch({ labelKey: 'settings.printModal', tab: 'filament', keywords: 'print modal custom mapping', anchor: 'card-printmodal' });
 registerSettingsSearch({ labelKey: 'settings.amsDisplayThresholds', tab: 'filament', keywords: 'ams humidity temperature threshold history retention', anchor: 'card-amsthresholds' });
@@ -1368,6 +1369,17 @@ export function SettingsPage() {
           {t('settings.tabs.queue', 'Workflow')}
         </button>
         <button
+          onClick={() => handleTabChange('automation')}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px lg:border-b-0 lg:border-l-2 lg:-ml-px lg:mb-0 lg:justify-start flex items-center gap-2 ${
+            activeTab === 'automation'
+              ? 'text-bambu-green border-bambu-green'
+              : 'text-bambu-gray hover:text-gray-900 dark:hover:text-white border-transparent'
+          }`}
+        >
+          <Cog className="w-4 h-4" />
+          {t('settings.tabs.automation', 'Automation')}
+        </button>
+        <button
           onClick={() => handleTabChange('filament')}
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px lg:border-b-0 lg:border-l-2 lg:-ml-px lg:mb-0 lg:justify-start flex items-center gap-2 ${
             activeTab === 'filament'
@@ -2616,6 +2628,137 @@ export function SettingsPage() {
       </>
       )}
 
+      {/* Automation Tab */}
+      {activeTab === 'automation' && localSettings && (
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex-1 lg:max-w-xl space-y-3">
+          <Card id="card-chamber-light-auto-off">
+            <CardHeader>
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <PowerOff className="w-5 h-5 text-yellow-400" />
+                Chamber Light Automation
+              </h2>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-bambu-gray">
+                Control supported chamber lights automatically across the farm.
+              </p>
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-white">Idle light auto-off</p>
+                  <p className="text-sm text-bambu-gray">
+                    Turns lights off after a printer has been idle with the light left on.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.chamber_light_auto_off_enabled ?? false}
+                    onChange={(e) => updateSetting('chamber_light_auto_off_enabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
+                </label>
+              </div>
+
+              {localSettings.chamber_light_auto_off_enabled && (
+                <div>
+                  <label className="block text-sm text-bambu-gray mb-1">
+                    Idle timeout
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="240"
+                      value={localSettings.chamber_light_auto_off_minutes ?? 30}
+                      onChange={(e) => updateSetting('chamber_light_auto_off_minutes', Math.max(1, Math.min(240, parseInt(e.target.value, 10) || 30)))}
+                      className="w-24 px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
+                    />
+                    <span className="text-sm text-bambu-gray">minutes</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-bambu-dark-tertiary pt-3 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-white">Early-print light auto-off</p>
+                  <p className="text-sm text-bambu-gray">
+                    Farm-wide setting for turning lights off after the inspection window.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.chamber_light_print_auto_off_enabled ?? false}
+                    onChange={(e) => updateSetting('chamber_light_print_auto_off_enabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
+                </label>
+              </div>
+
+              {localSettings.chamber_light_print_auto_off_enabled && (
+                <div>
+                  <label className="block text-sm text-bambu-gray mb-1">
+                    Inspection window
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="240"
+                      value={localSettings.chamber_light_print_auto_off_minutes ?? 10}
+                      onChange={(e) => updateSetting('chamber_light_print_auto_off_minutes', Math.max(1, Math.min(240, parseInt(e.target.value, 10) || 10)))}
+                      className="w-24 px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
+                    />
+                    <span className="text-sm text-bambu-gray">minutes after print start</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-white">Turn off after first layer</p>
+                  <p className="text-sm text-bambu-gray">
+                    Turns lights off once the printer reports layer 2 or later.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.chamber_light_print_auto_off_first_layer_enabled ?? false}
+                    onChange={(e) => updateSetting('chamber_light_print_auto_off_first_layer_enabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
+                </label>
+              </div>
+
+              <div className="border-t border-bambu-dark-tertiary pt-3 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-white">Error light flashing</p>
+                  <p className="text-sm text-bambu-gray">
+                    Farm-wide setting for flashing supported chamber lights until the error clears or the door opens.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.chamber_light_flash_on_error_enabled ?? false}
+                    onChange={(e) => updateSetting('chamber_light_flash_on_error_enabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
+                </label>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      )}
+
       {/* Network Tab */}
       {activeTab === 'network' && localSettings && (
       <div className="flex flex-col lg:flex-row gap-6">
@@ -2647,130 +2790,6 @@ export function SettingsPage() {
                 <p className="text-xs text-bambu-gray mt-1">
                   {t('settings.externalUrlHint')}
                 </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card id="card-chamber-light-auto-off">
-            <CardHeader>
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <PowerOff className="w-5 h-5 text-yellow-400" />
-                Chamber Light Automation
-              </h2>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-bambu-gray">
-                Manage supported chamber lights automatically across your printer fleet.
-              </p>
-
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-white">Enable auto-off</p>
-                  <p className="text-sm text-bambu-gray">
-                    Bambuddy will not turn lights off while a printer is printing or paused.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={localSettings.chamber_light_auto_off_enabled ?? false}
-                    onChange={(e) => updateSetting('chamber_light_auto_off_enabled', e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
-                </label>
-              </div>
-
-              {localSettings.chamber_light_auto_off_enabled && (
-                <div>
-                  <label className="block text-sm text-bambu-gray mb-1">
-                    Turn off after idle for
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="1"
-                      max="240"
-                      value={localSettings.chamber_light_auto_off_minutes ?? 30}
-                      onChange={(e) => updateSetting('chamber_light_auto_off_minutes', Math.max(1, Math.min(240, parseInt(e.target.value, 10) || 30)))}
-                      className="w-24 px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
-                    />
-                    <span className="text-sm text-bambu-gray">minutes</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="border-t border-bambu-dark-tertiary pt-3 flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-white">Turn off during prints by default</p>
-                  <p className="text-sm text-bambu-gray">
-                    Keeps lights on for early print checks, then turns them off to save power.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={localSettings.chamber_light_print_auto_off_enabled ?? false}
-                    onChange={(e) => updateSetting('chamber_light_print_auto_off_enabled', e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
-                </label>
-              </div>
-
-              {localSettings.chamber_light_print_auto_off_enabled && (
-                <div>
-                  <label className="block text-sm text-bambu-gray mb-1">
-                    Turn off after print starts for
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="1"
-                      max="240"
-                      value={localSettings.chamber_light_print_auto_off_minutes ?? 10}
-                      onChange={(e) => updateSetting('chamber_light_print_auto_off_minutes', Math.max(1, Math.min(240, parseInt(e.target.value, 10) || 10)))}
-                      className="w-24 px-3 py-2 bg-bambu-dark border border-bambu-dark-tertiary rounded-lg text-white focus:border-bambu-green focus:outline-none"
-                    />
-                    <span className="text-sm text-bambu-gray">minutes</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-white">Turn off after first layer</p>
-                  <p className="text-sm text-bambu-gray">
-                    Shuts supported lights down once the printer reports layer 2 or later.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={localSettings.chamber_light_print_auto_off_first_layer_enabled ?? false}
-                    onChange={(e) => updateSetting('chamber_light_print_auto_off_first_layer_enabled', e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
-                </label>
-              </div>
-
-              <div className="border-t border-bambu-dark-tertiary pt-3 flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-white">Flash on printer error by default</p>
-                  <p className="text-sm text-bambu-gray">
-                    Printers set to inherit will flash supported chamber lights when a new error appears.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={localSettings.chamber_light_flash_on_error_enabled ?? false}
-                    onChange={(e) => updateSetting('chamber_light_flash_on_error_enabled', e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
-                </label>
               </div>
             </CardContent>
           </Card>
