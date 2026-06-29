@@ -66,8 +66,12 @@ export function DiagnosticChecklist({ result }: { result: PrinterDiagnosticResul
 
   const renderCheck = (check: DiagnosticCheck) => {
     const fallback = CHECK_FALLBACKS[check.id];
+    const params =
+      check.id === 'port_rtsps'
+        ? { protocol: 'RTSPS', port: 322, ...check.params }
+        : check.params;
     const detail = t(`diagnostic.check.${check.id}.${check.status}`, {
-      ...check.params,
+      ...params,
       defaultValue: fallback?.[check.status] ?? '',
     });
     return (
@@ -82,7 +86,7 @@ export function DiagnosticChecklist({ result }: { result: PrinterDiagnosticResul
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm text-white">
-            {t(`diagnostic.check.${check.id}.title`, { defaultValue: fallback?.title ?? check.id })}
+            {t(`diagnostic.check.${check.id}.title`, { ...params, defaultValue: fallback?.title ?? check.id })}
           </div>
           {detail && <div className="text-xs text-bambu-gray mt-0.5">{detail}</div>}
         </div>
