@@ -534,7 +534,16 @@ class TestPrintersAPI:
 
         assert response.status_code == 200
         assert response.json()["hms_errors"] == [
-            {"code": "42", "attr": 42, "module": 0, "severity": 2, "message": "Platform blocked"}
+            {
+                "code": "42",
+                "attr": 42,
+                "module": 0,
+                "severity": 2,
+                "message": "Platform blocked",
+                "actions": [],
+                "job_id": None,
+                "full_code": "",
+            }
         ]
 
     @pytest.mark.asyncio
