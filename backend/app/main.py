@@ -90,6 +90,7 @@ from backend.app.services.bambu_ftp import (
     with_ftp_retry,
 )
 from backend.app.services.bambu_mqtt import PrinterState
+from backend.app.services.chamber_light_auto_off import chamber_light_auto_off_service
 from backend.app.services.github_backup import github_backup_service
 from backend.app.services.homeassistant import homeassistant_service
 from backend.app.services.library_trash import library_trash_service
@@ -6227,6 +6228,9 @@ async def lifespan(app: FastAPI):
     # Start the notification digest scheduler
     notification_service.start_digest_scheduler()
 
+    # Start the chamber light auto-off scheduler
+    chamber_light_auto_off_service.start()
+
     # Start the GitHub backup scheduler
     await github_backup_service.start_scheduler()
 
@@ -6285,6 +6289,7 @@ async def lifespan(app: FastAPI):
     print_scheduler.stop()
     smart_plug_manager.stop_scheduler()
     notification_service.stop_digest_scheduler()
+    chamber_light_auto_off_service.stop()
     github_backup_service.stop_scheduler()
     local_backup_service.stop_scheduler()
     library_trash_service.stop_scheduler()

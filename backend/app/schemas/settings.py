@@ -212,6 +212,18 @@ class AppSettings(BaseModel):
         description="Camera view mode: 'window' opens in new browser window, 'embedded' shows overlay on main screen",
     )
 
+    # Chamber light automation
+    chamber_light_auto_off_enabled: bool = Field(
+        default=False,
+        description="Automatically turn chamber lights off after a printer sits idle with the light on",
+    )
+    chamber_light_auto_off_minutes: int = Field(
+        default=30,
+        ge=1,
+        le=240,
+        description="Minutes a chamber light may remain on while the printer is idle before Bambuddy turns it off",
+    )
+
     # Preferred slicer application (server-side / API sidecar slicer)
     preferred_slicer: str = Field(
         default="bambu_studio",
@@ -486,6 +498,8 @@ class AppSettingsUpdate(BaseModel):
     library_archive_mode: str | None = None
     library_disk_warning_gb: float | None = None
     camera_view_mode: str | None = None
+    chamber_light_auto_off_enabled: bool | None = None
+    chamber_light_auto_off_minutes: int | None = Field(default=None, ge=1, le=240)
     preferred_slicer: str | None = None
     open_in_slicer: str | None = None
     use_slicer_api: bool | None = None
