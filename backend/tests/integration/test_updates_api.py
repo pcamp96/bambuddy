@@ -706,13 +706,14 @@ class TestUpdatesAPI:
         """Direct POST /apply on a Windows-installer install must be rejected
         with a friendly message — the git path would error out with "git not
         found" (or worse, "not a git repository") if it ran."""
+        from backend.app.api.routes import updates as updates_module
+
+        updates_module._update_status = {"status": "idle", "progress": 0, "message": "", "error": None}
+
         with (
-            patch("backend.app.api.routes.updates._is_ha_addon", return_value=False),
-            patch("backend.app.api.routes.updates._is_docker_environment", return_value=False),
-            patch(
-                "backend.app.api.routes.updates._is_windows_installer_install",
-                return_value=True,
-            ),
+            patch.object(updates_module, "_is_ha_addon", return_value=False),
+            patch.object(updates_module, "_is_docker_environment", return_value=False),
+            patch.object(updates_module, "_is_windows_installer_install", return_value=True),
         ):
             response = await async_client.post("/api/v1/updates/apply")
         result = response.json()
