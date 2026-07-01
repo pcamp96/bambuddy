@@ -241,6 +241,10 @@ class AppSettings(BaseModel):
         default=False,
         description="Turn supported chamber lights off after the first layer completes",
     )
+    chamber_light_turn_on_when_door_opens_enabled: bool = Field(
+        default=True,
+        description="Turn supported chamber lights on when a printer door opens",
+    )
 
     # Preferred slicer application (server-side / API sidecar slicer)
     preferred_slicer: str = Field(
@@ -522,6 +526,7 @@ class AppSettingsUpdate(BaseModel):
     chamber_light_print_auto_off_enabled: bool | None = None
     chamber_light_print_auto_off_minutes: int | None = Field(default=None, ge=1, le=240)
     chamber_light_print_auto_off_first_layer_enabled: bool | None = None
+    chamber_light_turn_on_when_door_opens_enabled: bool | None = None
     preferred_slicer: str | None = None
     open_in_slicer: str | None = None
     use_slicer_api: bool | None = None

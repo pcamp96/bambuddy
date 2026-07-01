@@ -983,6 +983,8 @@ export function SettingsPage() {
         (localSettings.chamber_light_print_auto_off_minutes ?? 10) ||
       (settings.chamber_light_print_auto_off_first_layer_enabled ?? false) !==
         (localSettings.chamber_light_print_auto_off_first_layer_enabled ?? false) ||
+      (settings.chamber_light_turn_on_when_door_opens_enabled ?? true) !==
+        (localSettings.chamber_light_turn_on_when_door_opens_enabled ?? true) ||
       (settings.preferred_slicer ?? 'bambu_studio') !== (localSettings.preferred_slicer ?? 'bambu_studio') ||
       (settings.open_in_slicer ?? null) !== (localSettings.open_in_slicer ?? null) ||
       (settings.use_slicer_api ?? false) !== (localSettings.use_slicer_api ?? false) ||
@@ -1083,6 +1085,7 @@ export function SettingsPage() {
         chamber_light_print_auto_off_enabled: localSettings.chamber_light_print_auto_off_enabled,
         chamber_light_print_auto_off_minutes: localSettings.chamber_light_print_auto_off_minutes,
         chamber_light_print_auto_off_first_layer_enabled: localSettings.chamber_light_print_auto_off_first_layer_enabled,
+        chamber_light_turn_on_when_door_opens_enabled: localSettings.chamber_light_turn_on_when_door_opens_enabled,
         preferred_slicer: localSettings.preferred_slicer,
         open_in_slicer: localSettings.open_in_slicer,
         use_slicer_api: localSettings.use_slicer_api,
@@ -2690,6 +2693,24 @@ export function SettingsPage() {
                   </div>
                 </div>
               )}
+
+              <div className="border-t border-bambu-dark-tertiary pt-3 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-white">Turn on when door opens</p>
+                  <p className="text-sm text-bambu-gray">
+                    Restores the chamber light when someone opens a supported printer door.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.chamber_light_turn_on_when_door_opens_enabled ?? true}
+                    onChange={(e) => updateSetting('chamber_light_turn_on_when_door_opens_enabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
+                </label>
+              </div>
 
               <div className="border-t border-bambu-dark-tertiary pt-3 flex items-center justify-between gap-4">
                 <div>

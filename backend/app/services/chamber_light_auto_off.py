@@ -40,7 +40,7 @@ class ChamberLightAutoOffService:
         self._flash_interval = flash_interval
         self._task: asyncio.Task | None = None
         self._idle_light_since: dict[int, float] = {}
-        self._settings_cache: tuple[float, tuple[bool, int, bool, bool, int, bool]] | None = None
+        self._settings_cache: tuple[float, tuple[bool, int, bool, bool, int, bool, bool]] | None = None
         self._last_error_signature: dict[int, str] = {}
         self._flash_tasks: dict[int, asyncio.Task] = {}
         self._print_light_since: dict[int, float] = {}
@@ -65,7 +65,7 @@ class ChamberLightAutoOffService:
                 logger.error("Error in chamber light auto-off check: %s", e)
             await asyncio.sleep(self._check_interval)
 
-    async def _settings(self) -> tuple[bool, int, bool, bool, int, bool]:
+    async def _settings(self) -> tuple[bool, int, bool, bool, int, bool, bool]:
         defaults = {
             "chamber_light_auto_off_enabled": "false",
             "chamber_light_auto_off_minutes": "30",
@@ -73,6 +73,7 @@ class ChamberLightAutoOffService:
             "chamber_light_print_auto_off_enabled": "false",
             "chamber_light_print_auto_off_minutes": "10",
             "chamber_light_print_auto_off_first_layer_enabled": "false",
+            "chamber_light_turn_on_when_door_opens_enabled": "true",
         }
         cached = self._settings_cache
         now = time.monotonic()
@@ -111,6 +112,13 @@ class ChamberLightAutoOffService:
             )
             or ""
         ).lower() == "true"
+        turn_on_when_door_opens = (
+            rows.get(
+                "chamber_light_turn_on_when_door_opens_enabled",
+                defaults["chamber_light_turn_on_when_door_opens_enabled"],
+            )
+            or ""
+        ).lower() == "true"
         try:
             minutes = int(
                 rows.get(
@@ -140,6 +148,7 @@ class ChamberLightAutoOffService:
             print_auto_off,
             print_minutes,
             print_first_layer_off,
+            turn_on_when_door_opens,
         )
         self._settings_cache = (now, settings)
         return settings
@@ -164,7 +173,15 @@ class ChamberLightAutoOffService:
         return f"state:{state_name}|hms:{','.join(hms_codes)}"
 
     async def handle_status_change(self, printer_id: int, state):
-        """Flash chamber lights once when a new active error appears."""
+        """React to status changes that affect chamber light automation."""
+        *_, turn_on_when_door_opens = await self._settings()
+        if turn_on_when_door_opens and getattr(state, "door_open", False) and not getattr(state, "chamber_light", False):
+            client = printer_manager.get_client(printer_id)
+            if client and hasattr(client, "set_chamber_light") and getattr(state, "connected", False):
+                logger.info("Turning on chamber light for printer %s because the door opened", printer_id)
+                if client.set_chamber_light(True):
+                    state.chamber_light = True
+
         signature = self._error_signature(state)
         if not signature:
             self._last_error_signature.pop(printer_id, None)
@@ -180,7 +197,7 @@ class ChamberLightAutoOffService:
             return
         self._last_error_signature[printer_id] = signature
 
-        _, _, global_flash_on_error, _, _, _ = await self._settings()
+        _, _, global_flash_on_error, _, _, _, _ = await self._settings()
         if not await self._flash_enabled_for_printer(printer_id, global_flash_on_error):
             return
 
@@ -267,6 +284,7 @@ class ChamberLightAutoOffService:
             print_auto_off,
             print_minutes,
             print_first_layer_off,
+            _,
         ) = await self._settings()
         if not enabled:
             self._idle_light_since.clear()

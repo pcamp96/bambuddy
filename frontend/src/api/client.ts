@@ -1217,6 +1217,7 @@ export interface AppSettings {
   chamber_light_print_auto_off_enabled: boolean;
   chamber_light_print_auto_off_minutes: number;
   chamber_light_print_auto_off_first_layer_enabled: boolean;
+  chamber_light_turn_on_when_door_opens_enabled: boolean;
   // Preferred slicer (server-side API / sidecar)
   preferred_slicer: 'bambu_studio' | 'orcaslicer';
   // Desktop "Open in Slicer" override (#1329). Null inherits from
