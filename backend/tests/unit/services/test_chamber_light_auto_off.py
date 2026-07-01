@@ -84,6 +84,47 @@ async def test_handle_status_change_does_not_turn_on_for_door_open_when_disabled
 
 
 @pytest.mark.asyncio
+async def test_check_once_turns_on_light_for_open_door(monkeypatch):
+    service = ChamberLightAutoOffService()
+
+    async def settings():
+        return True, 5, False, False, 10, False, True
+
+    calls = []
+    state = SimpleNamespace(connected=True, chamber_light=False, state="IDLE", door_open=True)
+    client = SimpleNamespace(set_chamber_light=lambda on: calls.append(on) or True)
+    monkeypatch.setattr(service, "_settings", settings)
+    monkeypatch.setattr(module, "printer_manager", _FakePrinterManager(state, client))
+
+    await service.check_once()
+
+    assert calls == [True]
+    assert state.chamber_light is True
+
+
+@pytest.mark.asyncio
+async def test_check_once_does_not_turn_off_idle_light_while_door_open(monkeypatch):
+    service = ChamberLightAutoOffService()
+    service._idle_light_since[1] = 0
+
+    async def settings():
+        return True, 1, False, False, 10, False, True
+
+    calls = []
+    state = SimpleNamespace(connected=True, chamber_light=True, state="IDLE", door_open=True)
+    client = SimpleNamespace(set_chamber_light=lambda on: calls.append(on) or True)
+    monkeypatch.setattr(service, "_settings", settings)
+    monkeypatch.setattr(module, "printer_manager", _FakePrinterManager(state, client))
+    monkeypatch.setattr(module.time, "monotonic", lambda: 61)
+
+    await service.check_once()
+
+    assert calls == []
+    assert state.chamber_light is True
+    assert 1 not in service._idle_light_since
+
+
+@pytest.mark.asyncio
 async def test_check_once_does_not_turn_off_while_printing(monkeypatch):
     service = ChamberLightAutoOffService()
     service._idle_light_since[1] = 0

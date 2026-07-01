@@ -172,15 +172,25 @@ class ChamberLightAutoOffService:
 
         return f"state:{state_name}|hms:{','.join(hms_codes)}"
 
+    async def _turn_on_for_open_door(self, printer_id: int, state) -> bool:
+        if not getattr(state, "door_open", False) or getattr(state, "chamber_light", False):
+            return False
+
+        client = printer_manager.get_client(printer_id)
+        if not client or not hasattr(client, "set_chamber_light") or not getattr(state, "connected", False):
+            return False
+
+        logger.info("Turning on chamber light for printer %s because the door opened", printer_id)
+        if client.set_chamber_light(True):
+            state.chamber_light = True
+            return True
+        return False
+
     async def handle_status_change(self, printer_id: int, state):
         """React to status changes that affect chamber light automation."""
         *_, turn_on_when_door_opens = await self._settings()
-        if turn_on_when_door_opens and getattr(state, "door_open", False) and not getattr(state, "chamber_light", False):
-            client = printer_manager.get_client(printer_id)
-            if client and hasattr(client, "set_chamber_light") and getattr(state, "connected", False):
-                logger.info("Turning on chamber light for printer %s because the door opened", printer_id)
-                if client.set_chamber_light(True):
-                    state.chamber_light = True
+        if turn_on_when_door_opens:
+            await self._turn_on_for_open_door(printer_id, state)
 
         signature = self._error_signature(state)
         if not signature:
@@ -284,11 +294,13 @@ class ChamberLightAutoOffService:
             print_auto_off,
             print_minutes,
             print_first_layer_off,
-            _,
+            turn_on_when_door_opens,
         ) = await self._settings()
         if not enabled:
             self._idle_light_since.clear()
         await self._check_print_auto_off(print_auto_off, print_minutes, print_first_layer_off)
+        if turn_on_when_door_opens:
+            await self._check_open_door_lights()
         if not enabled:
             return
 
@@ -303,6 +315,7 @@ class ChamberLightAutoOffService:
                 or printer_id in self._flash_tasks
                 or not state.connected
                 or not state.chamber_light
+                or getattr(state, "door_open", False)
                 or self._is_printing_or_paused(state.state)
             ):
                 self._idle_light_since.pop(printer_id, None)
@@ -325,6 +338,13 @@ class ChamberLightAutoOffService:
             if printer_id not in statuses:
                 self._idle_light_since.pop(printer_id, None)
 
+    async def _check_open_door_lights(self):
+        statuses = printer_manager.get_all_statuses()
+        for printer_id, state in statuses.items():
+            if printer_id in self._flash_tasks:
+                continue
+            await self._turn_on_for_open_door(printer_id, state)
+
     async def _check_print_auto_off(self, enabled: bool, minutes: int, first_layer_enabled: bool):
         if not enabled and not first_layer_enabled:
             self._print_light_since.clear()
@@ -341,6 +361,7 @@ class ChamberLightAutoOffService:
                 not is_printing
                 or not getattr(state, "connected", False)
                 or not getattr(state, "chamber_light", False)
+                or getattr(state, "door_open", False)
                 or printer_id in self._flash_tasks
             ):
                 self._print_light_since.pop(printer_id, None)
