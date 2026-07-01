@@ -973,6 +973,16 @@ export function SettingsPage() {
       (settings.library_archive_mode ?? 'ask') !== (localSettings.library_archive_mode ?? 'ask') ||
       Number(settings.library_disk_warning_gb ?? 5) !== Number(localSettings.library_disk_warning_gb ?? 5) ||
       (settings.camera_view_mode ?? 'window') !== (localSettings.camera_view_mode ?? 'window') ||
+      (settings.chamber_light_auto_off_enabled ?? false) !== (localSettings.chamber_light_auto_off_enabled ?? false) ||
+      (settings.chamber_light_auto_off_minutes ?? 30) !== (localSettings.chamber_light_auto_off_minutes ?? 30) ||
+      (settings.chamber_light_flash_on_error_enabled ?? false) !==
+        (localSettings.chamber_light_flash_on_error_enabled ?? false) ||
+      (settings.chamber_light_print_auto_off_enabled ?? false) !==
+        (localSettings.chamber_light_print_auto_off_enabled ?? false) ||
+      (settings.chamber_light_print_auto_off_minutes ?? 10) !==
+        (localSettings.chamber_light_print_auto_off_minutes ?? 10) ||
+      (settings.chamber_light_print_auto_off_first_layer_enabled ?? false) !==
+        (localSettings.chamber_light_print_auto_off_first_layer_enabled ?? false) ||
       (settings.preferred_slicer ?? 'bambu_studio') !== (localSettings.preferred_slicer ?? 'bambu_studio') ||
       (settings.open_in_slicer ?? null) !== (localSettings.open_in_slicer ?? null) ||
       (settings.use_slicer_api ?? false) !== (localSettings.use_slicer_api ?? false) ||
